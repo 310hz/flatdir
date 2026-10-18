@@ -2,10 +2,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, bail};
 
-/// 旧実装がアーカイブ済みディレクトリに置いていた目印。今は書かないが、復元時に掃除する。
+/// Marker file the old shell implementation left in archived directories. No longer written, but cleaned up on restore.
 pub const LEGACY_ARCHIVE_MARKER: &str = ".flatdir_archived";
 
-/// 実環境のパスを一箇所に集約する。テストはここに使い捨てのパスを注入し、実 HOME に触れない。
+/// Gathers every real-environment path in one place so tests can inject throwaway paths and never touch the real HOME.
 #[derive(Debug, Clone)]
 pub struct Env {
     pub home: PathBuf,
@@ -45,7 +45,7 @@ impl Env {
         Ok(self.home.join(rel))
     }
 
-    /// アーカイブは HOME 相対パスをそのまま保つ(`~/a/b` → `<archive_root>/a/b`)。
+    /// The archive keeps the HOME-relative path as is (`~/a/b` -> `<archive_root>/a/b`).
     pub fn archive_dest(&self, target: &Path) -> Result<PathBuf> {
         Ok(self.archive_root.join(self.rel_from_home(target)?))
     }

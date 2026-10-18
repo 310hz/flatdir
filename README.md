@@ -1,33 +1,33 @@
 # flatdir
 
-1 つのディレクトリ(管理 root)直下のプロジェクトを fzf で選んで、移動・アーカイブ・削除・作成・clone するCLI。
+Browse and manage the projects that live directly under one directory (the managed root) with fzf: jump to one, archive, restore, delete, create, or clone.
 
-## インストール
+## Install
 
-Rust の環境が必要(`rustup`)。
-
-```sh
-cargo install --path .                 # ローカルのソースから
-cargo install --git <リポジトリURL>     # 公開後はこちら
-```
-
-依存コマンド: `fzf`、`trash`(必須)。`zoxide`(使用頻度順)、`eza`・`rich`(プレビュー)、`gh`・`git`(`init --git`・`clone`)は任意または機能限定。
-
-## 使い方
+Requires a Rust toolchain (`rustup`).
 
 ```sh
-flatdir track ~/workspace   # 管理 root を設定(1 つだけ)
-flatdir                     # fzf で選んでパスを出力
-flatdir -a                  # アーカイブ済みから選ぶ
-flatdir archive             # 複数選択してアーカイブへ移動
-flatdir restore             # アーカイブから戻す
-flatdir remove              # 複数選択して trash へ
-flatdir init <name> [--git] # 新規作成(--git は GitHub に private リポジトリも作る)
-flatdir clone [-s] [target] # git clone(-s は GitHub を検索)
-flatdir untrack | list
+cargo install --path .                # from a local checkout
+cargo install --git <repository-url>  # once published
 ```
 
-`cd` するにはシェル関数で包む(zsh/bash)。
+Required commands: `fzf`, `trash`. Optional: `zoxide` (order by frecency), `eza` and `rich` (previews), `gh` and `git` (`init --git`, `clone`).
+
+## Usage
+
+```sh
+flatdir track ~/workspace    # set the managed root (only one is supported)
+flatdir                      # pick a directory with fzf and print its path
+flatdir -a                   # pick from archived directories
+flatdir archive              # move the selected directories to the archive
+flatdir restore              # move archived directories back
+flatdir remove               # move the selected directories to the trash
+flatdir init <name> [--git]  # create a directory (--git also creates a private GitHub repo)
+flatdir clone [-s] [target]  # git clone (-s searches GitHub)
+flatdir untrack              # unset the managed root
+```
+
+`flatdir` only prints a path. To `cd` into the selection, wrap it in a shell function (zsh/bash):
 
 ```sh
 flatdir() {
@@ -42,19 +42,26 @@ flatdir() {
 }
 ```
 
-## 設定
+## Configuration
 
-`~/.config/flatdir/config.toml`
+`~/.config/flatdir/config.toml` (or `$XDG_CONFIG_HOME/flatdir/config.toml`):
 
 ```toml
 root = "/Users/me/workspace"
-fzf_opts = []   # 例: ["--color=light"]
+fzf_opts = []   # extra fzf options, e.g. ["--color=light"]
 ```
 
-色は端末テーマと fzf の既定に任せている(ライト/ダーク共通)。
+flatdir sets no colors of its own; it follows your terminal theme and fzf defaults, so it reads the same in light and dark terminals.
 
-## 安全のために
+## Archive layout
 
-`remove`・`archive`・`restore` は実ディレクトリを動かす。対話端末でしか動かず、全件選択は拒否する。詳細は `agents/docs/concepts/safety.md`。
+Archived directories are moved to `~/.local/share/flatdir/archive/<root path relative to $HOME>/<name>`, mirroring the layout under the root. No marker files are needed.
 
-アーカイブは `~/.local/share/flatdir/archive/<rootのHOME相対パス>/` 直下にそのまま置かれる。
+## Safety
+
+`remove`, `archive` and `restore` move or delete real directories, so they:
+
+- run only on an interactive terminal (never in pipes or scripts),
+- refuse to act on every candidate at once,
+- ignore a `FZF_DEFAULT_OPTS` that contains options such as `--filter` or `--select-1`,
+- delete only through the `trash` command, never `rm`.

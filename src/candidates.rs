@@ -12,8 +12,8 @@ pub struct Entry {
     pub path: PathBuf,
 }
 
-/// 隠しディレクトリとシンボリックリンクは対象外。
-/// fzf の行は TAB/改行区切りなので、名前に含むものも除く(行が壊れて別物を指すのを防ぐ)。
+/// Hidden directories and symlinks are excluded.
+/// fzf rows are TAB/newline separated, so names containing either are skipped too (a broken row could point at something else).
 pub fn list_children(dir: &Path) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
     for entry in fs::read_dir(dir).with_context(|| format!("not a directory: {}", dir.display()))? {
@@ -36,7 +36,7 @@ pub fn list_children(dir: &Path) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
-/// 管理 root 直下を zoxide スコアの降順で返す。
+/// Children of the managed root, ordered by descending zoxide score.
 pub fn candidates(ctx: &Context) -> Result<Vec<Entry>> {
     let mut entries = list_children(ctx.root()?)?;
     let scores = ctx.scores.scores();

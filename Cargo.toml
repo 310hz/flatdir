@@ -2,6 +2,8 @@
 name = "flatdir"
 version = "0.1.0"
 edition = "2024"
+description = "Browse and manage the directories directly under one root with fzf"
+readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.104"

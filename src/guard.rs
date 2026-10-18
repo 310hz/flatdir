@@ -5,23 +5,25 @@ use anyhow::{Result, bail};
 
 use crate::context::Context;
 
-/// 非対話(パイプ・リダイレクト・自動実行)では破壊的コマンドを動かさない。
+/// Destructive commands never run non-interactively (pipes, redirects, automation).
 pub fn require_interactive(ctx: &Context, command: &str) -> Result<()> {
     if !ctx.interactive {
-        bail!("{command} は対話端末でのみ実行できる(stdin/stderr が端末ではない)");
+        bail!("{command} requires an interactive terminal (stdin and stderr must be terminals)");
     }
     Ok(())
 }
 
-/// 候補を全件選んだ場合は拒否する。非対話 fzf の全件通過のような事故の最後の砦。
+/// Rejects selecting every candidate; the last line of defense against accidents like a non-interactive fzf passing everything.
 pub fn reject_select_all(total: usize, selected: usize) -> Result<()> {
     if total >= 2 && selected >= total {
-        bail!("全件選択は拒否した({selected}/{total})。意図した操作なら対象を減らして実行する");
+        bail!(
+            "refusing to act on every candidate ({selected}/{total}); select fewer entries if this is intended"
+        );
     }
     Ok(())
 }
 
-/// 操作対象は管理領域の直下 1 階層に限る。
+/// Targets must be direct children of the managed directory.
 pub fn ensure_child_of(parent: &Path, path: &Path) -> Result<()> {
     let name_ok = path
         .file_name()
@@ -29,7 +31,7 @@ pub fn ensure_child_of(parent: &Path, path: &Path) -> Result<()> {
         .is_some_and(|n| !n.is_empty() && !n.starts_with('.'));
     if path.parent() != Some(parent) || !name_ok {
         bail!(
-            "{} は {} 直下のディレクトリではない",
+            "{} is not a direct child directory of {}",
             path.display(),
             parent.display()
         );

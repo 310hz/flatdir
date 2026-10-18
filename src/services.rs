@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context as _, Result, bail};
 
-/// 外部コマンド・対話といった副作用の境界。テストでは偽物に差し替える。
+/// Boundary for side effects (external commands, prompts). Replaced by fakes in tests.
 pub trait Trasher {
     fn trash(&self, path: &Path) -> Result<()>;
 }
@@ -19,7 +19,7 @@ pub trait ScoreSource {
     fn scores(&self) -> HashMap<PathBuf, f64>;
 }
 
-/// 削除は必ず `trash` コマンド経由。無ければ `rm` にフォールバックせずエラーにする。
+/// Deletion always goes through the `trash` command. If it is missing this fails instead of falling back to `rm`.
 pub struct TrashCommand;
 
 impl Trasher for TrashCommand {
@@ -35,7 +35,7 @@ impl Trasher for TrashCommand {
     }
 }
 
-/// stdin ではなく /dev/tty から読む。出力を取り込むシェル関数の下でも対話できる。
+/// Reads from /dev/tty rather than stdin, so prompting works even under a shell function that captures stdout.
 pub struct TtyPrompter;
 
 impl Prompter for TtyPrompter {
@@ -58,7 +58,7 @@ impl Prompter for TtyPrompter {
 pub struct Zoxide;
 
 impl ScoreSource for Zoxide {
-    /// 1 回の呼び出しで全スコアを取る。パスごとに呼ぶと O(N) 回プロセスを起動することになる。
+    /// Fetches every score in a single call; querying per path would spawn O(N) processes.
     fn scores(&self) -> HashMap<PathBuf, f64> {
         let Ok(out) = Command::new("zoxide")
             .args(["query", "-ls"])
@@ -71,7 +71,7 @@ impl ScoreSource for Zoxide {
     }
 }
 
-/// 各行は `  12.0 /path with spaces`。スコアの後ろ全体をパスとして扱う。
+/// Each line looks like `  12.0 /path with spaces`; everything after the score is the path.
 pub fn parse_zoxide(text: &str) -> HashMap<PathBuf, f64> {
     text.lines()
         .filter_map(|line| {

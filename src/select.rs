@@ -43,7 +43,7 @@ impl SelectOpts {
 }
 
 pub trait Selector {
-    /// 選択された行をそのまま返す。キャンセルや該当なしは空。
+    /// Returns the selected lines verbatim. Empty on cancel or when nothing matches.
     fn select(&self, lines: &[String], opts: &SelectOpts) -> Result<Vec<String>>;
 }
 
@@ -55,14 +55,14 @@ pub struct Fzf {
 impl Selector for Fzf {
     fn select(&self, lines: &[String], opts: &SelectOpts) -> Result<Vec<String>> {
         let mut cmd = Command::new("fzf");
-        // `--filter=` などが環境変数経由で効くと非対話・全件通過になり、破壊的処理が全対象に走る。
-        // 配色などの普通の設定は引き継ぎ、危険なオプションを含むときだけ捨てる。
-        // ファイル経由の設定は中身を検査できないので常に捨てる。必要な設定は config の fzf_opts へ。
+        // A `--filter=` coming from the environment makes fzf non-interactive and pass every line, so destructive commands would hit every target.
+        // Ordinary settings such as colors are inherited; the variable is dropped only when it contains a dangerous option.
+        // The options file cannot be inspected, so it is always dropped. Put needed options in `fzf_opts` of the config instead.
         cmd.env_remove("FZF_DEFAULT_OPTS_FILE");
         if let Ok(value) = std::env::var("FZF_DEFAULT_OPTS")
             && !fzf_env_is_safe(&value)
         {
-            eprintln!("warning: FZF_DEFAULT_OPTS に危険なオプションを含むため無視する");
+            eprintln!("warning: ignoring FZF_DEFAULT_OPTS because it contains a dangerous option");
             cmd.env_remove("FZF_DEFAULT_OPTS");
         }
         cmd.args(&self.extra_opts);
@@ -74,7 +74,7 @@ impl Selector for Fzf {
             cmd.arg(format!("--prompt={prompt}"));
         }
         if let Some(preview) = opts.preview {
-            // 行は `表示\tパス`(ディレクトリ)か `owner/repo\t星数`(clone)。参照する列が違う。
+            // Rows are `display\tpath` (directories) or `owner/repo\tstars` (clone), so the column to pass differs.
             let (sub, field) = match preview {
                 Preview::Dir => ("__preview", 2),
                 Preview::Clone => ("__clone-preview", 1),
@@ -101,7 +101,7 @@ impl Selector for Fzf {
         let mut stdin = child.stdin.take().context("failed to open fzf stdin")?;
         let input = lines.join("\n") + "\n";
         let writer = std::thread::spawn(move || {
-            // fzf が先に終了した場合の EPIPE は無視してよい。
+            // Ignore EPIPE: fzf may exit before reading all of the input.
             let _ = stdin.write_all(input.as_bytes());
         });
         let output = child.wait_with_output()?;
@@ -123,8 +123,8 @@ fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
-/// 行を選択させ、元の行の添字で返す。
-/// 提示していない行が返ってきたら即エラーにして、選択結果の取り違えで別物を操作しないようにする。
+/// Lets the user pick rows and returns their indices.
+/// Fails on any row that was not offered, so a mismatched selection can never act on something else.
 pub fn pick(ctx: &Context, rows: &[Vec<String>], opts: &SelectOpts) -> Result<Vec<usize>> {
     let lines: Vec<String> = rows.iter().map(|r| r.join("\t")).collect();
     let index: HashMap<&str, usize> = lines

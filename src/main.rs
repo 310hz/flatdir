@@ -16,10 +16,10 @@ use flatdir::services::{TrashCommand, TtyPrompter, Zoxide};
 #[derive(Parser)]
 #[command(
     version,
-    about = "管理 root 直下のディレクトリを flat に一覧し、移動・整理する"
+    about = "Browse, archive and manage the directories directly under one managed root"
 )]
 struct Cli {
-    /// アーカイブ済みディレクトリを選択する
+    /// Pick from archived directories instead
     #[arg(short = 'a', long)]
     archived: bool,
 
@@ -29,28 +29,26 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// 管理 root を設定する(1 つだけ)
+    /// Set the managed root (only one is supported)
     Track { path: PathBuf },
-    /// 管理 root の設定を解除する
+    /// Unset the managed root
     Untrack,
-    /// 管理 root を表示する
-    List,
-    /// 選択したディレクトリを trash へ送る
+    /// Move the selected directories to the trash
     Remove,
-    /// 選択したディレクトリをアーカイブへ移す
+    /// Move the selected directories to the archive
     Archive,
-    /// アーカイブ済みを選択して元の場所へ戻す
+    /// Move archived directories back under the root
     Restore,
-    /// root 直下に新規ディレクトリを作る
+    /// Create a new directory under the root
     Init {
         name: String,
-        /// GitHub に private リポジトリを作って clone する
+        /// Also create a private GitHub repository and clone it
         #[arg(long)]
         git: bool,
     },
-    /// root 直下に git clone する
+    /// git clone into the root
     Clone {
-        /// GitHub を検索して選ぶ
+        /// Search GitHub and pick a repository
         #[arg(short = 's')]
         search: bool,
         target: Option<String>,
@@ -81,7 +79,7 @@ fn context() -> Result<Context> {
 
 fn run(cli: Cli) -> Result<()> {
     match (cli.archived, cli.command) {
-        (true, Some(_)) => bail!("-a はサブコマンドと併用できない"),
+        (true, Some(_)) => bail!("-a cannot be combined with a subcommand"),
         (true, None) => print_path(cmd::select_archived(&context()?)?),
         (false, None) => print_path(cmd::select(&context()?)?),
         (false, Some(command)) => match command {
@@ -98,10 +96,6 @@ fn run(cli: Cli) -> Result<()> {
             Command::Untrack => {
                 eprintln!("untracked: {}", cmd::untrack(&mut context()?)?.display())
             }
-            Command::List => match cmd::list(&context()?) {
-                Some(root) => println!("{}", root.display()),
-                None => eprintln!("(empty)"),
-            },
             Command::Remove => cmd::remove(&context()?)?,
             Command::Archive => cmd::archive(&context()?)?,
             Command::Restore => cmd::restore(&context()?)?,

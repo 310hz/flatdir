@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, Result, bail};
 use serde::{Deserialize, Serialize};
 
-/// fzf に渡すと選択が自動確定・全件通過になるオプション。破壊的コマンドの事故原因になる。
+/// Options that make fzf auto-select or pass every line through. Combined with destructive commands they cause accidents.
 const FORBIDDEN_FZF_OPTS: &[&str] = &["-f", "--filter", "-1", "--select-1", "-0", "--exit-0"];
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -38,7 +38,7 @@ impl Config {
 
     fn validate(&self) -> Result<()> {
         if let Some(opt) = self.fzf_opts.iter().find(|o| is_forbidden_fzf_opt(o)) {
-            bail!("fzf_opts に使えないオプション: {opt}");
+            bail!("unsupported fzf option in config: {opt}");
         }
         Ok(())
     }
@@ -48,7 +48,7 @@ pub fn is_forbidden_fzf_opt(opt: &str) -> bool {
     FORBIDDEN_FZF_OPTS.contains(&opt.split('=').next().unwrap_or(opt))
 }
 
-/// 環境変数 FZF_DEFAULT_OPTS を引き継いでよいか。配色などは活かし、危険なオプションを含むときだけ捨てる。
+/// Whether FZF_DEFAULT_OPTS may be inherited. Ordinary settings such as colors are kept; it is dropped only when it contains a dangerous option.
 pub fn fzf_env_is_safe(value: &str) -> bool {
     !value.split_whitespace().any(is_forbidden_fzf_opt)
 }

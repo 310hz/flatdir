@@ -10,7 +10,7 @@ use crate::services::{Prompter, ScoreSource, Trasher};
 pub struct Context {
     pub env: Env,
     pub config: Config,
-    /// 破壊的コマンドは対話端末でのみ実行する。テストが注入できるよう、環境変数ではなく値で持つ。
+    /// Destructive commands run only on an interactive terminal. Held as a value, not read from the environment, so tests can inject it.
     pub interactive: bool,
     pub selector: Box<dyn Selector>,
     pub trasher: Box<dyn Trasher>,
@@ -26,7 +26,7 @@ impl Context {
             .ok_or_else(|| anyhow!("no managed root (did you run: flatdir track <path> ?)"))
     }
 
-    /// アーカイブ済みディレクトリの置き場。管理 root は 1 つなので、この直下が全アーカイブ。
+    /// Where archived directories live. There is a single managed root, so everything directly under this is an archive.
     pub fn archive_base(&self) -> Result<PathBuf> {
         self.env.archive_dest(self.root()?)
     }

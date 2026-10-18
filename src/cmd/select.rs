@@ -32,7 +32,7 @@ pub fn select_archived(ctx: &Context) -> Result<Option<PathBuf>> {
     Ok(picked.first().map(|&i| entries[i].path.clone()))
 }
 
-/// 破壊的コマンド用の複数選択。キャンセルと全件選択はエラーにする。
+/// Multi-select for destructive commands. Cancelling or selecting everything is an error.
 pub(super) fn choose_many(ctx: &Context, entries: Vec<Entry>) -> Result<Vec<Entry>> {
     let picked = pick(ctx, &rows(&entries), &SelectOpts::dirs(true))?;
     if picked.is_empty() {

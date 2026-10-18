@@ -1,4 +1,4 @@
-//! 実バイナリを、使い捨ての HOME と偽の fzf だけで動かす。環境変数は全て作り直す。
+//! Runs the real binary with only a throwaway HOME and a fake fzf. The environment is rebuilt from scratch.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -77,14 +77,15 @@ fn stdout(o: &Output) -> String {
 }
 
 #[test]
-fn track_list_and_select_round_trip() {
+fn track_and_select_round_trip() {
     let sb = Sandbox::new();
     assert!(
         sb.run(&["track", sb.root.to_str().unwrap()], &[])
             .status
             .success()
     );
-    assert_eq!(stdout(&sb.run(&["list"], &[])), sb.root.to_str().unwrap());
+    let config = fs::read_to_string(sb.home.join(".config/flatdir/config.toml")).unwrap();
+    assert!(config.contains(sb.root.to_str().unwrap()), "{config}");
 
     let out = sb.run(&[], &[]);
     assert!(
@@ -95,7 +96,7 @@ fn track_list_and_select_round_trip() {
     assert_eq!(stdout(&out), sb.root.join("alpha").to_str().unwrap());
 }
 
-/// 2026-10-18 の事故の再現: 非対話 + `--filter=` で全件選択された状態で remove / restore / archive を実行する。
+/// Reproduces the 2026-10-18 incident: remove / restore / archive run non-interactively with `--filter=` selecting everything.
 #[test]
 fn incident_regression_noninteractive_filter_env_changes_nothing() {
     let sb = Sandbox::new();
@@ -110,7 +111,7 @@ fn incident_regression_noninteractive_filter_env_changes_nothing() {
         let out = sb.run(&[sub], &[("FZF_DEFAULT_OPTS", "--filter=")]);
         assert!(!out.status.success(), "{sub} must fail");
         assert!(
-            String::from_utf8_lossy(&out.stderr).contains("対話端末"),
+            String::from_utf8_lossy(&out.stderr).contains("interactive terminal"),
             "{sub}"
         );
     }

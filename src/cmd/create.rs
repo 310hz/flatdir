@@ -33,7 +33,7 @@ fn succeeds(cmd: &mut Command) -> bool {
     cmd.output().is_ok_and(|o| o.status.success())
 }
 
-/// root 直下の 1 階層名だけを許す。`..` や `/` を含む名前で root の外に作るのを防ぐ。
+/// Only single-level names are allowed, so `..` or `/` cannot create anything outside the root.
 fn ensure_plain_name(name: &str) -> Result<()> {
     if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', '\t', '\n']) {
         bail!("invalid name: {name:?}");
@@ -41,7 +41,7 @@ fn ensure_plain_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// アーカイブ済みと同名のものを作ると、復元できなくなる。
+/// Creating something with an archived name would make that archive impossible to restore.
 fn ensure_no_archive_conflict(ctx: &Context, name: &str, what: &str) -> Result<()> {
     let conflict = ctx.archive_base()?.join(name);
     if conflict.exists() {
@@ -121,7 +121,7 @@ fn clone_search(ctx: &Context, query: &str) -> Result<String> {
     Ok(format!("git@github.com:{}.git", rows[i][0]))
 }
 
-/// フルの git URL / `owner/repo` / `repo`(自分のアカウント)を受ける。見つからなければ検索に回す。
+/// Accepts a full git URL, `owner/repo`, or `repo` (your own account). Falls back to search when not found.
 fn resolve_url(ctx: &Context, target: &str) -> Result<String> {
     if target.contains("://") || target.starts_with("git@") {
         return Ok(target.to_string());
@@ -173,11 +173,11 @@ pub fn clone(ctx: &Context, search: bool, target: Option<&str>) -> Result<PathBu
     Ok(dest)
 }
 
-/// 既存ディレクトリの置き換えは削除を伴う。対話端末で確認が取れたときだけ `trash` に送る。
+/// Replacing an existing directory deletes it, so it is sent to `trash` only after confirmation on an interactive terminal.
 fn overwrite_existing(ctx: &Context, dest: &Path) -> Result<()> {
     if !ctx.interactive {
         bail!(
-            "destination exists: {} (非対話では上書きしない)",
+            "destination exists: {} (not overwritten non-interactively)",
             dest.display()
         );
     }

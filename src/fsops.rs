@@ -5,7 +5,7 @@ use std::process::Command;
 
 use anyhow::{Context as _, Result, bail};
 
-/// 上書きしない移動。別ファイルシステム間は `mv` に任せる。
+/// Moves without overwriting. Cross-filesystem moves are delegated to `mv`.
 pub fn move_dir(src: &Path, dst: &Path) -> Result<()> {
     if !src.exists() {
         bail!("mv src not found: {}", src.display());

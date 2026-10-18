@@ -10,7 +10,7 @@ use crate::fsops::move_dir;
 use crate::guard::{ensure_child_of, ensure_plain_dir, require_interactive};
 use crate::paths::LEGACY_ARCHIVE_MARKER;
 
-/// アーカイブ後に削除を提案する、再生成可能なもの。
+/// Regenerable items offered for deletion after archiving.
 const CLEANUP_CANDIDATES: &[&str] = &[
     ".DS_Store",
     ".venv",
@@ -100,7 +100,7 @@ pub fn restore(ctx: &Context) -> Result<()> {
 
     for (src, dest) in plan {
         move_dir(&src, &dest)?;
-        // 旧実装が置いた目印は不要になったので、復元と同時に取り除く。
+        // The old implementation left a marker file; it is obsolete, so remove it while restoring.
         match fs::remove_file(dest.join(LEGACY_ARCHIVE_MARKER)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
             _ => {}

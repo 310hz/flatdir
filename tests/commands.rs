@@ -1,4 +1,4 @@
-//! 全て使い捨ての HOME 上で動かす。実環境のパス・fzf・trash には一切触れない。
+//! Everything runs on a throwaway HOME. Real paths, fzf and trash are never touched.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -23,7 +23,7 @@ impl Selector for FakeSelector {
     }
 }
 
-/// 呼ばれたら失敗する。非対話ガードが fzf より前に効くことの確認用。
+/// Fails if called; verifies the non-interactive guard acts before fzf is ever consulted.
 struct NeverSelector;
 
 impl Selector for NeverSelector {
@@ -80,7 +80,7 @@ struct Sandbox {
 impl Sandbox {
     fn new() -> Self {
         let tmp = TempDir::new().unwrap();
-        // macOS の /var → /private/var のような symlink を避けるため正規化しておく。
+        // Canonicalize to avoid symlinks such as macOS /var -> /private/var.
         let base = fs::canonicalize(tmp.path()).unwrap();
         let home = base.join("home");
         let root = home.join("ws");
@@ -241,7 +241,7 @@ fn destructive_commands_refuse_select_all() {
         let sb = Sandbox::new();
         let ctx = sb.ctx(pick_all(), true);
         let err = run(&ctx).unwrap_err().to_string();
-        assert!(err.contains("全件選択"), "{err}");
+        assert!(err.contains("every candidate"), "{err}");
         assert_eq!(
             sb.names(&sb.root),
             [".hidden", "alpha", "beta", "file.txt", "gamma"]
@@ -257,7 +257,7 @@ fn destructive_commands_refuse_select_all() {
     let err = cmd::restore(&sb.ctx(pick_all(), true))
         .unwrap_err()
         .to_string();
-    assert!(err.contains("全件選択"), "{err}");
+    assert!(err.contains("every candidate"), "{err}");
     assert_eq!(sb.names(&archive_dir(&sb)), ["a1", "a2"]);
 }
 
@@ -270,7 +270,12 @@ fn destructive_commands_refuse_when_not_interactive_before_asking_fzf() {
     ] {
         let sb = Sandbox::new();
         let ctx = sb.ctx(Box::new(NeverSelector), false);
-        assert!(run(&ctx).unwrap_err().to_string().contains("対話端末"));
+        assert!(
+            run(&ctx)
+                .unwrap_err()
+                .to_string()
+                .contains("interactive terminal")
+        );
         assert_eq!(
             sb.names(&sb.root),
             [".hidden", "alpha", "beta", "file.txt", "gamma"]
