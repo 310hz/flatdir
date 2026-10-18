@@ -256,7 +256,10 @@ fn picker_uses_only_palette_colors() {
     sb.track();
     let text = sb.run_in_pty(&[], &[], "alpha", "\x03");
 
-    assert!(text.contains("\x1b[7m"), "expected reverse video for the current line: {text:?}");
+    assert!(
+        text.contains("\x1b[7m"),
+        "expected reverse video for the current line: {text:?}"
+    );
 
     let mut bad = Vec::new();
     for marker in ["38;5;", "48;5;", "58;5;"] {
