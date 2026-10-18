@@ -424,3 +424,35 @@ fn zoxide_output_with_spaces_in_paths_is_parsed() {
     assert_eq!(m[Path::new("/d")], 3.0);
     assert_eq!(m.len(), 2);
 }
+
+#[test]
+fn status_reports_counts_and_survives_a_missing_root() {
+    let sb = Sandbox::new();
+    for d in ["a1", "a2"] {
+        fs::create_dir_all(archive_dir(&sb).join(d)).unwrap();
+    }
+    let ctx = sb.ctx(pick_names(&[]), false);
+    let status = cmd::status(&ctx);
+    let root = status.root.as_ref().unwrap();
+    assert_eq!(
+        (root.path.as_path(), root.directories, root.archived),
+        (sb.root.as_path(), Some(3), 2)
+    );
+    assert_eq!(root.archive_dir, archive_dir(&sb));
+    assert!(status.tools.iter().any(|t| t.name == "fzf" && t.required));
+    let text = status.to_string();
+    assert!(
+        text.contains("directories: 3") && text.contains("archived:    2"),
+        "{text}"
+    );
+
+    let mut missing = sb.ctx(pick_names(&[]), false);
+    missing.config.root = Some(sb.home.join("nowhere"));
+    let status = cmd::status(&missing);
+    assert_eq!(status.root.as_ref().unwrap().directories, None);
+    assert!(status.to_string().contains("not a readable directory"));
+
+    let mut unset = sb.ctx(pick_names(&[]), false);
+    unset.config.root = None;
+    assert!(cmd::status(&unset).to_string().contains("not set"));
+}

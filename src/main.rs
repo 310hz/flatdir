@@ -33,6 +33,8 @@ enum Command {
     Track { path: PathBuf },
     /// Unset the managed root
     Untrack,
+    /// Show the managed root, directory counts and required commands
+    Status,
     /// Move the selected directories to the trash
     Remove,
     /// Move the selected directories to the archive
@@ -96,6 +98,7 @@ fn run(cli: Cli) -> Result<()> {
             Command::Untrack => {
                 eprintln!("untracked: {}", cmd::untrack(&mut context()?)?.display())
             }
+            Command::Status => println!("{}", cmd::status(&context()?)),
             Command::Remove => cmd::remove(&context()?)?,
             Command::Archive => cmd::archive(&context()?)?,
             Command::Restore => cmd::restore(&context()?)?,

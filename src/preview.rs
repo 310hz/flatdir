@@ -4,10 +4,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::Result;
 
-fn have(cmd: &str) -> bool {
-    std::env::var_os("PATH")
-        .is_some_and(|paths| std::env::split_paths(&paths).any(|d| d.join(cmd).is_file()))
-}
+use crate::services::command_exists;
 
 fn preview_columns() -> String {
     std::env::var("FZF_PREVIEW_COLUMNS").unwrap_or_else(|_| "80".to_string())
@@ -19,7 +16,7 @@ pub fn dir(path: &Path) -> Result<()> {
         .map(|n| path.join(n))
         .find(|p| p.is_file());
     if let Some(readme) = readme {
-        if have("rich") {
+        if command_exists("rich") {
             Command::new("rich")
                 .args(["--max-width", &preview_columns(), "--"])
                 .arg(&readme)
@@ -33,7 +30,7 @@ pub fn dir(path: &Path) -> Result<()> {
         return Ok(());
     }
 
-    if have("eza") {
+    if command_exists("eza") {
         Command::new("eza")
             .args([
                 "-lTF",
@@ -57,7 +54,7 @@ pub fn dir(path: &Path) -> Result<()> {
 }
 
 pub fn clone_repo(repo: &str) -> Result<()> {
-    if !have("rich") {
+    if !command_exists("rich") {
         Command::new("gh").args(["repo", "view", repo]).status()?;
         return Ok(());
     }

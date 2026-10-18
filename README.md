@@ -19,6 +19,7 @@ Required commands: `fzf`, `trash`. Optional: `zoxide` (order by frecency), `eza`
 flatdir track ~/workspace    # set the managed root (only one is supported)
 flatdir                      # pick a directory with fzf and print its path
 flatdir -a                   # pick from archived directories
+flatdir status               # show the root, directory/archive counts and required commands
 flatdir archive              # move the selected directories to the archive
 flatdir restore              # move archived directories back
 flatdir remove               # move the selected directories to the trash

@@ -81,3 +81,8 @@ pub fn parse_zoxide(text: &str) -> HashMap<PathBuf, f64> {
         })
         .collect()
 }
+
+pub fn command_exists(cmd: &str) -> bool {
+    std::env::var_os("PATH")
+        .is_some_and(|paths| std::env::split_paths(&paths).any(|d| d.join(cmd).is_file()))
+}
