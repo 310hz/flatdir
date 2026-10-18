@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 
@@ -15,7 +16,7 @@ pub struct Context {
     pub selector: Box<dyn Selector>,
     pub trasher: Box<dyn Trasher>,
     pub prompter: Box<dyn Prompter>,
-    pub scores: Box<dyn ScoreSource>,
+    pub scores: Arc<dyn ScoreSource>,
 }
 
 impl Context {

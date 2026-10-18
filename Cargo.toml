@@ -2,18 +2,22 @@
 name = "flatdir"
 version = "0.1.0"
 edition = "2024"
-description = "Browse and manage the directories directly under one root with a built-in fuzzy picker"
+description = "A TUI to browse, archive and manage the directories directly under one root"
 readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
+ignore = "0.4.33"
+nucleo-matcher = "0.3.1"
+pulldown-cmark = "0.13.4"
+ratatui = "0.30.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 skim = { version = "5.7.4", default-features = false, features = ["frizbee"] }
-termimad = "0.35.5"
 toml = "1.1.8"
 trash = "5.2.9"
+unicode-width = "0.2.2"
 
 [dev-dependencies]
 portable-pty = "0.9.0"

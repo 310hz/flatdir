@@ -10,6 +10,9 @@ pub struct Config {
     /// skim color scheme (same syntax as fzf's `--color`), e.g. `"light"` or `"dark,prompt:4"`.
     /// Unset means the built-in scheme that follows the terminal palette.
     pub color: Option<String>,
+    /// Play the macOS "move to trash" sound after removing. Off by default.
+    #[serde(default)]
+    pub sound: bool,
 }
 
 impl Config {

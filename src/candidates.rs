@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -33,15 +32,6 @@ pub fn list_children(dir: &Path) -> Result<Vec<Entry>> {
         });
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(entries)
-}
-
-/// Children of the managed root, ordered by descending zoxide score.
-pub fn candidates(ctx: &Context) -> Result<Vec<Entry>> {
-    let mut entries = list_children(ctx.root()?)?;
-    let scores = ctx.scores.scores();
-    let score = |e: &Entry| scores.get(&e.path).copied().unwrap_or(0.0);
-    entries.sort_by(|a, b| score(b).partial_cmp(&score(a)).unwrap_or(Ordering::Equal));
     Ok(entries)
 }
 

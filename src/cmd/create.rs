@@ -6,7 +6,7 @@ use anyhow::{Context as _, Result, anyhow, bail};
 
 use crate::context::Context;
 use crate::guard;
-use crate::select::{Preview, SelectOpts, pick};
+use crate::select::{SelectOpts, pick};
 
 fn run(cmd: &mut Command) -> Result<()> {
     let program = cmd.get_program().to_string_lossy().into_owned();
@@ -115,7 +115,7 @@ fn clone_search(ctx: &Context, query: &str) -> Result<String> {
         multi: false,
         prompt: Some("clone> ".to_string()),
         height_percent: 60,
-        preview: Some(Preview::Clone),
+        repo_preview: true,
     };
     guard::require_interactive(ctx, "clone -s")?;
     let picked = pick(ctx, &rows, &opts)?;

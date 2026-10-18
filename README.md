@@ -1,6 +1,6 @@
 # flatdir
 
-Browse and manage the projects that live directly under one directory (the managed root) with a built-in fuzzy picker: jump to one, archive, restore, delete, create, or clone.
+A TUI for the projects that live directly under one directory (the managed root): jump to one, archive, restore, or delete them, with a README or file-tree preview.
 
 ## Install
 
@@ -11,22 +11,35 @@ cargo install --path .                # from a local checkout
 cargo install --git <repository-url>  # once published
 ```
 
-There are no required external commands: the fuzzy picker, README preview and trash handling are built in. Optional: `zoxide` (order by frecency), `eza` (richer directory preview), `gh` and `git` (`init --git`, `clone`).
+There are no required external commands. Optional: `zoxide` (order by frecency), `gh` and `git` (`init --git`, `clone`).
 
 ## Usage
 
 ```sh
 flatdir track ~/workspace    # set the managed root (only one is supported)
-flatdir                      # pick a directory and print its path
-flatdir -a                   # pick from archived directories
-flatdir status               # show the root, directory/archive counts and required commands
-flatdir archive              # move the selected directories to the archive
-flatdir restore              # move archived directories back
-flatdir remove               # move the selected directories to the trash
+flatdir                      # open the TUI
+flatdir status               # show the root, directory/archive counts and optional commands
 flatdir init <name> [--git]  # create a directory (--git also creates a private GitHub repo)
 flatdir clone [-s] [target]  # git clone (-s searches GitHub)
 flatdir untrack              # unset the managed root
 ```
+
+### Keys in the TUI
+
+| Key | Action |
+|---|---|
+| type | fuzzy filter |
+| `Up` / `Down`, `PageUp` / `PageDown` | move |
+| `Enter` | print the path of the current directory (the shell function below `cd`s to it) |
+| `Tab` / `Shift+Tab` | mark the current entry and move down / up |
+| `Ctrl+A` | switch between the Tracked and Archived lists (marks are reset) |
+| `Ctrl+R` | run the current action on the marked entries (or the current one) |
+| `Ctrl+T` | switch the action: Archive (Restore in the Archived list) <-> Remove (move to the Trash) |
+| `Ctrl+P` | switch the preview: README (Markdown) <-> file tree. Without a README the tree is shown |
+| `Ctrl+U` | clear the filter |
+| `Esc` / `Ctrl+C` | quit |
+
+The shortcuts are always shown at the top. The action goes back to Archive/Restore after every run, so removing needs `Ctrl+T` each time and is shown in red.
 
 `flatdir` only prints a path. To `cd` into the selection, wrap it in a shell function (zsh/bash):
 
@@ -35,7 +48,7 @@ flatdir() {
   local out
   out="$(command flatdir "$@")" || return
   [ -z "$out" ] && return
-  if { [ "$#" -eq 0 ] || [ "$1" = "-a" ]; } && [ -d "$out" ]; then
+  if [ "$#" -eq 0 ] && [ -d "$out" ]; then
     cd "$out"
   else
     printf '%s\n' "$out"
@@ -49,10 +62,11 @@ flatdir() {
 
 ```toml
 root = "/Users/me/workspace"
-# color = "light"   # optional picker color scheme (fzf --color syntax); see below
+sound = false   # macOS: play the Finder "move to trash" sound after removing
+# color = "light"   # color scheme of the `clone -s` picker (fzf --color syntax)
 ```
 
-By default the picker uses only your terminal's own palette colors and reverse video, so it reads the same in light and dark terminals. Set `color` (for example `"light"`, `"dark"`, `"bw"`, or `"dark,prompt:4"`) to override it.
+The TUI uses only your terminal's own palette colors plus bold/reverse/dim, so it reads the same in light and dark terminals.
 
 ## Archive layout
 
@@ -60,9 +74,10 @@ Archived directories are moved to `~/.local/share/flatdir/archive/<root path rel
 
 ## Safety
 
-`remove`, `archive` and `restore` move or delete real directories, so they:
+Archiving, restoring and removing move real directories, so the TUI:
 
-- run only on an interactive terminal (never in pipes or scripts),
-- refuse to act on every candidate at once,
-- cannot be made non-interactive through environment variables (the picker reads no `FZF_DEFAULT_OPTS` or `SKIM_DEFAULT_OPTIONS`),
-- delete only by moving to the system trash, never with `rm`.
+- runs only on an interactive terminal (never in pipes or scripts),
+- refuses to act on every entry of a list at once,
+- treats pasted text as text, so a paste can never trigger a shortcut,
+- is not influenced by `FZF_DEFAULT_OPTS` or any other environment variable,
+- removes only by moving to the system trash, never with `rm`, and never deletes anything inside an archived project (`node_modules` and friends are only reported).

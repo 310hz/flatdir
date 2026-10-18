@@ -15,7 +15,7 @@ pub trait Prompter {
     fn confirm(&self, message: &str) -> bool;
 }
 
-pub trait ScoreSource {
+pub trait ScoreSource: Send + Sync {
     fn scores(&self) -> HashMap<PathBuf, f64>;
 }
 
@@ -89,4 +89,17 @@ pub fn parse_zoxide(text: &str) -> HashMap<PathBuf, f64> {
 pub fn command_exists(cmd: &str) -> bool {
     std::env::var_os("PATH")
         .is_some_and(|paths| std::env::split_paths(&paths).any(|d| d.join(cmd).is_file()))
+}
+
+/// Plays the Finder "move to trash" sound on macOS. Best effort and silent on failure.
+pub fn play_trash_sound() {
+    const SOUND: &str = "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/finder/move to trash.aif";
+    if cfg!(target_os = "macos") && Path::new(SOUND).is_file() {
+        let _ = Command::new("afplay")
+            .arg(SOUND)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
 }

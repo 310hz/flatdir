@@ -29,7 +29,6 @@ pub struct Status {
 /// Everything else is built in; these only enable extra features.
 const TOOLS: &[(&str, &str)] = &[
     ("zoxide", "order by frecency"),
-    ("eza", "richer directory preview"),
     ("gh", "init --git, clone"),
     ("git", "init --git, clone"),
 ];

@@ -5,36 +5,19 @@ use anyhow::{Result, anyhow, bail};
 use skim::prelude::*;
 
 use crate::context::Context;
-use crate::preview;
 
 /// Only ANSI palette indexes (0-15), reverse video and bold, so it follows the terminal theme and
 /// reads the same on light and dark backgrounds. skim's own default is a dark-background 256-color scheme.
 const DEFAULT_COLOR: &str = "none,matched:2+b,current:-1+r,current_match:2+b+r,prompt:4,cursor:1,\
 selected:5,header:6,info:-1+d,spinner:2,border:-1,scrollbar:-1";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Preview {
-    Dir,
-    Clone,
-}
-
 #[derive(Debug, Clone)]
 pub struct SelectOpts {
     pub multi: bool,
     pub prompt: Option<String>,
     pub height_percent: u8,
-    pub preview: Option<Preview>,
-}
-
-impl SelectOpts {
-    pub fn dirs(multi: bool) -> Self {
-        Self {
-            multi,
-            prompt: None,
-            height_percent: 60,
-            preview: Some(Preview::Dir),
-        }
-    }
+    /// Rows are GitHub `owner/repo` names; show `gh repo view` in the preview pane.
+    pub repo_preview: bool,
 }
 
 pub trait Selector {
@@ -51,7 +34,7 @@ pub struct SkimSelector {
 
 struct Row {
     line: String,
-    preview: Option<Preview>,
+    repo_preview: bool,
 }
 
 impl Row {
@@ -69,16 +52,23 @@ impl SkimItem for Row {
         Cow::Borrowed(&self.line)
     }
 
-    fn preview(&self, context: PreviewContext) -> ItemPreview {
-        match self.preview {
-            Some(Preview::Dir) => {
-                ItemPreview::AnsiText(preview::dir(self.field(1).as_ref(), context.width))
-            }
-            Some(Preview::Clone) => {
-                ItemPreview::AnsiText(preview::repo(self.field(0), context.width))
-            }
-            None => ItemPreview::Text(String::new()),
+    fn preview(&self, _context: PreviewContext) -> ItemPreview {
+        if self.repo_preview {
+            ItemPreview::Text(repo_preview(self.field(0)))
+        } else {
+            ItemPreview::Text(String::new())
         }
+    }
+}
+
+fn repo_preview(name: &str) -> String {
+    match std::process::Command::new("gh")
+        .args(["repo", "view", name])
+        .output()
+    {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
+        Ok(_) => format!("gh repo view failed: {name}"),
+        Err(_) => "gh is not installed".to_string(),
     }
 }
 
@@ -100,7 +90,9 @@ impl Selector for SkimSelector {
         if opts.multi {
             builder.header("Tab: select multiple  Enter: confirm");
         }
-        if opts.preview.is_some() {
+        // No gutter glyphs: the current row is shown in reverse video.
+        builder.selector_icon("").multi_select_icon("");
+        if opts.repo_preview {
             builder.preview("");
         }
         let options = builder
@@ -109,7 +101,7 @@ impl Selector for SkimSelector {
 
         let rows = lines.iter().map(|line| Row {
             line: line.clone(),
-            preview: opts.preview,
+            repo_preview: opts.repo_preview,
         });
         let output = Skim::run_items(options, rows).map_err(|e| anyhow!("picker failed: {e}"))?;
         if output.is_abort {
