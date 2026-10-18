@@ -14,6 +14,9 @@ check:
     cargo clippy --all-targets -- -D warnings
     cargo test
 
-# 自分の環境(CARGO_HOME の bin)へ入れる。ユーザーが自分で実行する
+# Install (or reinstall) into CARGO_HOME/bin. Run by the user, never by an agent.
 install:
-    cargo install --path .
+    cargo install --path . --force
+
+uninstall:
+    cargo uninstall flatdir
