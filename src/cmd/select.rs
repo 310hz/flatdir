@@ -15,6 +15,7 @@ fn rows(entries: &[Entry]) -> Vec<Vec<String>> {
 }
 
 pub fn select(ctx: &Context) -> Result<Option<PathBuf>> {
+    guard::require_interactive(ctx, "flatdir")?;
     let entries = candidates::candidates(ctx)?;
     if entries.is_empty() {
         bail!("no directories found (did you run: flatdir track <path> ?)");
@@ -24,6 +25,7 @@ pub fn select(ctx: &Context) -> Result<Option<PathBuf>> {
 }
 
 pub fn select_archived(ctx: &Context) -> Result<Option<PathBuf>> {
+    guard::require_interactive(ctx, "flatdir -a")?;
     let entries = candidates::archived(ctx)?;
     if entries.is_empty() {
         bail!("no archived directories found");

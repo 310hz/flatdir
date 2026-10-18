@@ -5,6 +5,7 @@ use std::process::Command;
 use anyhow::{Context as _, Result, anyhow, bail};
 
 use crate::context::Context;
+use crate::guard;
 use crate::select::{Preview, SelectOpts, pick};
 
 fn run(cmd: &mut Command) -> Result<()> {
@@ -116,6 +117,7 @@ fn clone_search(ctx: &Context, query: &str) -> Result<String> {
         height_percent: 60,
         preview: Some(Preview::Clone),
     };
+    guard::require_interactive(ctx, "clone -s")?;
     let picked = pick(ctx, &rows, &opts)?;
     let i = *picked.first().ok_or_else(|| anyhow!("no selection"))?;
     Ok(format!("git@github.com:{}.git", rows[i][0]))

@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use flatdir::cmd;
-use flatdir::config::{Config, fzf_env_is_safe};
+use flatdir::config::Config;
 use flatdir::context::Context;
 use flatdir::paths::Env;
 use flatdir::select::{SelectOpts, Selector};
@@ -109,7 +109,7 @@ impl Sandbox {
             },
             config: Config {
                 root: Some(self.root.clone()),
-                fzf_opts: vec![],
+                color: None,
             },
             interactive,
             selector,
@@ -171,8 +171,26 @@ fn candidates_are_sorted_by_score_and_skip_hidden_and_files() {
 #[test]
 fn select_returns_chosen_path() {
     let sb = Sandbox::new();
-    let ctx = sb.ctx(pick_names(&["beta"]), false);
+    let ctx = sb.ctx(pick_names(&["beta"]), true);
     assert_eq!(cmd::select(&ctx).unwrap(), Some(sb.root.join("beta")));
+}
+
+#[test]
+fn select_commands_require_an_interactive_terminal() {
+    let sb = Sandbox::new();
+    let ctx = sb.ctx(Box::new(NeverSelector), false);
+    assert!(
+        cmd::select(&ctx)
+            .unwrap_err()
+            .to_string()
+            .contains("interactive terminal")
+    );
+    assert!(
+        cmd::select_archived(&ctx)
+            .unwrap_err()
+            .to_string()
+            .contains("interactive terminal")
+    );
 }
 
 #[test]
@@ -391,30 +409,17 @@ fn init_creates_plain_dir_and_rejects_escaping_names() {
 }
 
 #[test]
-fn config_rejects_dangerous_fzf_opts() {
+fn config_ignores_unknown_legacy_keys_and_roundtrips_color() {
     let sb = Sandbox::new();
     fs::create_dir_all(sb.config_path.parent().unwrap()).unwrap();
-    for bad in ["--filter=x", "-f", "--select-1", "-1", "--exit-0"] {
-        fs::write(&sb.config_path, format!("fzf_opts = [\"{bad}\"]")).unwrap();
-        assert!(Config::load(&sb.config_path).is_err(), "{bad}");
-    }
-    fs::write(&sb.config_path, "fzf_opts = [\"--color=light\"]").unwrap();
-    assert!(Config::load(&sb.config_path).is_ok());
-}
-
-#[test]
-fn fzf_env_is_safe_only_without_dangerous_options() {
-    assert!(fzf_env_is_safe("--color=light --border"));
-    assert!(fzf_env_is_safe(""));
-    for bad in [
-        "--filter=",
-        "--filter=abc --reverse",
-        "--reverse -f x",
-        "-1",
-        "--select-1",
-    ] {
-        assert!(!fzf_env_is_safe(bad), "{bad}");
-    }
+    fs::write(
+        &sb.config_path,
+        "root = \"/x\"\nfzf_opts = [\"--filter=x\"]\ncolor = \"light\"\n",
+    )
+    .unwrap();
+    let config = Config::load(&sb.config_path).unwrap();
+    assert_eq!(config.root.as_deref(), Some(Path::new("/x")));
+    assert_eq!(config.color.as_deref(), Some("light"));
 }
 
 #[test]
@@ -439,7 +444,7 @@ fn status_reports_counts_and_survives_a_missing_root() {
         (sb.root.as_path(), Some(3), 2)
     );
     assert_eq!(root.archive_dir, archive_dir(&sb));
-    assert!(status.tools.iter().any(|t| t.name == "fzf" && t.required));
+    assert!(status.tools.iter().any(|t| t.name == "zoxide"));
     let text = status.to_string();
     assert!(
         text.contains("directories: 3") && text.contains("archived:    2"),

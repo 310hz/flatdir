@@ -3,11 +3,12 @@
 ## 現在の状態
 
 - sh 版のコマンド(選択・`-a`・track/untrack・remove/archive/restore・init・clone)を Rust で再実装済み。`just check` が通る。`list` は管理 root が 1 つなので廃止し、代わりに `status` で状態を表示する。
+- 外部コマンド依存を廃止: fzf→skim(ライブラリ)、trash→`trash` crate、rich/eza→内蔵(eza は任意で併用)。`gh`・`git`・`zoxide` は任意機能のため外部のまま。
 - ユーザー向けの文言(ヘルプ・メッセージ・README・コード内コメント)は英語。`agents/` 配下のドキュメントは日本語。
 - 旧版との差分(ユーザー指示による設計変更):
   - 管理 root は 1 つだけ。複数 root は廃止。
   - アーカイブの目印ファイル `.flatdir_archived` は廃止。root 直下に相当する `<archive_root>/<HOME からの相対パス>` の直下全体がアーカイブ。旧版で作られたアーカイブはそのまま使え、`restore` 時に旧マーカーを取り除く。
-  - 設定は `~/.config/flatdir/config.toml`(`root`、`fzf_opts`)。旧版の `src/flatdir/config`(`DIRS=`)は読まない。
+  - 設定は `~/.config/flatdir/config.toml`(`root`、`color`)。旧版の `src/flatdir/config`(`DIRS=`)は読まない。
 
 ## 未解決事項
 

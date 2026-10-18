@@ -1,6 +1,6 @@
 # flatdir
 
-Browse and manage the projects that live directly under one directory (the managed root) with fzf: jump to one, archive, restore, delete, create, or clone.
+Browse and manage the projects that live directly under one directory (the managed root) with a built-in fuzzy picker: jump to one, archive, restore, delete, create, or clone.
 
 ## Install
 
@@ -11,13 +11,13 @@ cargo install --path .                # from a local checkout
 cargo install --git <repository-url>  # once published
 ```
 
-Required commands: `fzf`, `trash`. Optional: `zoxide` (order by frecency), `eza` and `rich` (previews), `gh` and `git` (`init --git`, `clone`).
+There are no required external commands: the fuzzy picker, README preview and trash handling are built in. Optional: `zoxide` (order by frecency), `eza` (richer directory preview), `gh` and `git` (`init --git`, `clone`).
 
 ## Usage
 
 ```sh
 flatdir track ~/workspace    # set the managed root (only one is supported)
-flatdir                      # pick a directory with fzf and print its path
+flatdir                      # pick a directory and print its path
 flatdir -a                   # pick from archived directories
 flatdir status               # show the root, directory/archive counts and required commands
 flatdir archive              # move the selected directories to the archive
@@ -49,10 +49,10 @@ flatdir() {
 
 ```toml
 root = "/Users/me/workspace"
-fzf_opts = []   # extra fzf options, e.g. ["--color=light"]
+# color = "light"   # optional picker color scheme (fzf --color syntax); see below
 ```
 
-flatdir sets no colors of its own; it follows your terminal theme and fzf defaults, so it reads the same in light and dark terminals.
+By default the picker uses only your terminal's own palette colors and reverse video, so it reads the same in light and dark terminals. Set `color` (for example `"light"`, `"dark"`, `"bw"`, or `"dark,prompt:4"`) to override it.
 
 ## Archive layout
 
@@ -64,5 +64,5 @@ Archived directories are moved to `~/.local/share/flatdir/archive/<root path rel
 
 - run only on an interactive terminal (never in pipes or scripts),
 - refuse to act on every candidate at once,
-- ignore a `FZF_DEFAULT_OPTS` that contains options such as `--filter` or `--select-1`,
-- delete only through the `trash` command, never `rm`.
+- cannot be made non-interactive through environment variables (the picker reads no `FZF_DEFAULT_OPTS` or `SKIM_DEFAULT_OPTIONS`),
+- delete only by moving to the system trash, never with `rm`.

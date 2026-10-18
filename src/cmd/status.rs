@@ -8,7 +8,6 @@ use crate::services::command_exists;
 pub struct Tool {
     pub name: &'static str,
     pub purpose: &'static str,
-    pub required: bool,
     pub available: bool,
 }
 
@@ -22,19 +21,17 @@ pub struct RootStatus {
 
 pub struct Status {
     pub config_path: PathBuf,
-    pub fzf_opts: Vec<String>,
+    pub color: Option<String>,
     pub root: Option<RootStatus>,
     pub tools: Vec<Tool>,
 }
 
-const TOOLS: &[(&str, &str, bool)] = &[
-    ("fzf", "selection UI", true),
-    ("trash", "remove, archive cleanup, clone overwrite", true),
-    ("zoxide", "order by frecency", false),
-    ("eza", "directory preview", false),
-    ("rich", "README preview", false),
-    ("gh", "init --git, clone", false),
-    ("git", "init --git, clone", false),
+/// Everything else is built in; these only enable extra features.
+const TOOLS: &[(&str, &str)] = &[
+    ("zoxide", "order by frecency"),
+    ("eza", "richer directory preview"),
+    ("gh", "init --git, clone"),
+    ("git", "init --git, clone"),
 ];
 
 /// Read-only; never fails, so a broken setup is still reported.
@@ -47,14 +44,13 @@ pub fn status(ctx: &Context) -> Status {
     });
     Status {
         config_path: ctx.env.config_path.clone(),
-        fzf_opts: ctx.config.fzf_opts.clone(),
+        color: ctx.config.color.clone(),
         root,
         tools: TOOLS
             .iter()
-            .map(|&(name, purpose, required)| Tool {
+            .map(|&(name, purpose)| Tool {
                 name,
                 purpose,
-                required,
                 available: command_exists(name),
             })
             .collect(),
@@ -76,20 +72,18 @@ impl fmt::Display for Status {
             }
         }
         writeln!(f, "config:      {}", self.config_path.display())?;
-        if self.fzf_opts.is_empty() {
-            writeln!(f, "fzf_opts:    (none)")?;
-        } else {
-            writeln!(f, "fzf_opts:    {}", self.fzf_opts.join(" "))?;
-        }
+        writeln!(
+            f,
+            "color:       {}",
+            self.color
+                .as_deref()
+                .unwrap_or("(default: follows the terminal palette)")
+        )?;
 
-        writeln!(f, "\ncommands:")?;
+        writeln!(f, "\noptional commands:")?;
         for t in &self.tools {
-            let state = match (t.available, t.required) {
-                (true, _) => "ok",
-                (false, true) => "MISSING (required)",
-                (false, false) => "missing (optional)",
-            };
-            writeln!(f, "  {:<7} {:<20} {}", t.name, state, t.purpose)?;
+            let state = if t.available { "ok" } else { "missing" };
+            writeln!(f, "  {:<7} {:<8} {}", t.name, state, t.purpose)?;
         }
         Ok(())
     }

@@ -6,13 +6,13 @@
 
 ## ガード(`src/guard.rs` ほか)
 
-1. **対話端末必須**: `remove` / `archive` / `restore` と、`clone` の上書きは stdin・stderr が端末でなければ、fzf を起動する前に拒否。環境変数では回避できない(テストは `Context.interactive` に値を注入する)。
+1. **対話端末必須**: 選択を伴う全コマンド(`remove` / `archive` / `restore` / 引数なし / `-a` / `clone -s`)と、`clone` の上書きは、stdin・stderr が端末でなければピッカーを起動する前に拒否。環境変数では回避できない(テストは `Context.interactive` に値を注入する)。
 2. **全件選択の拒否**: 候補が 2 件以上で全て選ばれたら拒否。通常の操作では起きない状況だけを止めるので、毎回の確認は不要。
-3. **fzf 環境の検査**: `FZF_DEFAULT_OPTS` に `--filter`・`-1`・`-0` 系があれば無視して警告。普通の配色設定は引き継ぐ。`FZF_DEFAULT_OPTS_FILE` は検査できないので常に捨てる。`config.toml` の `fzf_opts` も同じ禁止リストで拒否。
-4. **選択結果の検証**: fzf が返した行は、提示した行と完全一致するものだけを受け付ける。
+3. **ピッカーは環境変数に影響されない**: ピッカーは skim をライブラリとして組み込んでおり、`FZF_DEFAULT_OPTS` も `SKIM_DEFAULT_OPTIONS` も読まない(skim 側で読むのは CLI 機能の有効時のみで、この crate では無効)。旧版の事故原因だった「環境変数経由の `--filter`」が構造的に効かない。外部コマンドとして fzf を呼ぶ設計に戻すなら、この項目を再設計する。
+4. **選択結果の検証**: ピッカーが返した行は、提示した行と完全一致するものだけを受け付ける。
 5. **2 段階実行**: 全対象を検証(直下 1 階層か・通常ディレクトリか・移動先が空か)してから実行し、途中失敗で半端な状態を残さない。
-6. **削除は trash のみ**: `trash` が無ければ `rm` にフォールバックせずエラー。`init`・`clone` の名前は root 直下 1 階層に限る(`..` や `/` を拒否)。
+6. **削除は OS のゴミ箱のみ**: `trash` crate で移動し、`rm` にフォールバックしない(macOS は `NSFileManager` 方式。Finder の「元に戻す」が出ない場合がある)。`init`・`clone` の名前は root 直下 1 階層に限る(`..` や `/` を拒否)。
 
 ## テスト方針
 
-実 HOME・実 fzf・実 trash に触れない。`tests/commands.rs` は使い捨てディレクトリと偽の selector/trasher、`tests/cli.rs` は `env_clear` した実バイナリと偽の `fzf`/`trash`。事故の再現(非対話 + `--filter=`)は `incident_regression_*` で固定している。
+実 HOME・実 trash に触れない。`tests/commands.rs` は使い捨てディレクトリと偽の selector/trasher。`tests/cli.rs` は `env_clear` した実バイナリを使い捨ての `HOME` で動かし、ピッカーは pty で操作する(`remove` だけは実 trash に届くので対象外)。事故の再現(非対話 + `--filter=`)は `incident_regression_*` で固定している。

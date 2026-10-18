@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result};
 
 /// Boundary for side effects (external commands, prompts). Replaced by fakes in tests.
 pub trait Trasher {
@@ -19,19 +19,23 @@ pub trait ScoreSource {
     fn scores(&self) -> HashMap<PathBuf, f64>;
 }
 
-/// Deletion always goes through the `trash` command. If it is missing this fails instead of falling back to `rm`.
-pub struct TrashCommand;
+/// Moves to the OS trash through the `trash` crate. There is deliberately no `rm` fallback.
+pub struct SystemTrash;
 
-impl Trasher for TrashCommand {
+impl Trasher for SystemTrash {
     fn trash(&self, path: &Path) -> Result<()> {
-        let status = Command::new("trash")
-            .arg(path)
-            .status()
-            .context("required command not found: trash")?;
-        if !status.success() {
-            bail!("failed: trash {}", path.display());
-        }
-        Ok(())
+        #[cfg(target_os = "macos")]
+        let result = {
+            use trash::macos::{DeleteMethod, TrashContextExtMacos};
+            let mut ctx = trash::TrashContext::default();
+            // The default (Finder via osascript) needs extra permissions and makes a sound.
+            ctx.set_delete_method(DeleteMethod::NsFileManager);
+            ctx.delete(path)
+        };
+        #[cfg(not(target_os = "macos"))]
+        let result = trash::delete(path);
+
+        result.with_context(|| format!("failed to move to trash: {}", path.display()))
     }
 }
 

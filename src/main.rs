@@ -9,9 +9,8 @@ use flatdir::cmd;
 use flatdir::config::Config;
 use flatdir::context::Context;
 use flatdir::paths::Env;
-use flatdir::preview;
-use flatdir::select::Fzf;
-use flatdir::services::{TrashCommand, TtyPrompter, Zoxide};
+use flatdir::select::SkimSelector;
+use flatdir::services::{SystemTrash, TtyPrompter, Zoxide};
 
 #[derive(Parser)]
 #[command(
@@ -55,25 +54,20 @@ enum Command {
         search: bool,
         target: Option<String>,
     },
-    #[command(name = "__preview", hide = true)]
-    Preview { path: PathBuf },
-    #[command(name = "__clone-preview", hide = true)]
-    ClonePreview { repo: String },
 }
 
 fn context() -> Result<Context> {
     let env = Env::from_process()?;
     let config = Config::load(&env.config_path)?;
-    let selector = Fzf {
-        extra_opts: config.fzf_opts.clone(),
-        exe: std::env::current_exe()?,
+    let selector = SkimSelector {
+        color: config.color.clone(),
     };
     Ok(Context {
         env,
         config,
         interactive: std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
         selector: Box::new(selector),
-        trasher: Box::new(TrashCommand),
+        trasher: Box::new(SystemTrash),
         prompter: Box::new(TtyPrompter),
         scores: Box::new(Zoxide),
     })
@@ -85,8 +79,6 @@ fn run(cli: Cli) -> Result<()> {
         (true, None) => print_path(cmd::select_archived(&context()?)?),
         (false, None) => print_path(cmd::select(&context()?)?),
         (false, Some(command)) => match command {
-            Command::Preview { path } => return preview::dir(&path),
-            Command::ClonePreview { repo } => return preview::clone_repo(&repo),
             Command::Track { path } => {
                 let (root, added) = cmd::track(&mut context()?, &path)?;
                 if added {
