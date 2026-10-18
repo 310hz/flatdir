@@ -35,6 +35,7 @@ flatdir untrack              # unset the managed root
 | `Ctrl+A` | switch between the Tracked and Archived lists (marks are reset) |
 | `Ctrl+R` | run the current action on the marked entries (or the current one) |
 | `Ctrl+T` | switch the action: Archive (Restore in the Archived list) <-> Remove (move to the Trash) |
+| `Ctrl+O` | open the current directory in the file manager (Finder on macOS, `xdg-open` elsewhere) |
 | `Ctrl+P` | switch the preview: README (Markdown) <-> file tree. Without a README the tree is shown |
 | `Ctrl+U` | clear the filter |
 | `Esc` / `Ctrl+C` | quit |

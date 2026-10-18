@@ -11,7 +11,7 @@ use flatdir::config::Config;
 use flatdir::context::Context;
 use flatdir::paths::Env;
 use flatdir::select::SkimSelector;
-use flatdir::services::{SystemTrash, TtyPrompter, Zoxide};
+use flatdir::services::{SystemOpener, SystemTrash, TtyPrompter, Zoxide};
 
 #[derive(Parser)]
 #[command(
@@ -60,6 +60,7 @@ fn context() -> Result<Context> {
         selector: Box::new(selector),
         trasher: Box::new(SystemTrash),
         prompter: Box::new(TtyPrompter),
+        opener: Box::new(SystemOpener),
         scores: Arc::new(Zoxide),
     })
 }

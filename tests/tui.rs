@@ -529,3 +529,60 @@ fn sanitize_only_touches_invisible_characters_and_tabs() {
         std::borrow::Cow::Borrowed(_)
     ));
 }
+
+#[test]
+fn ctrl_o_opens_the_current_entry_in_the_file_manager_and_changes_nothing() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, key(KeyCode::Down));
+    app.on_key(&ctx, ctrl('o'));
+    assert_eq!(*sb.opened.lock().unwrap(), [sb.root.join("beta")]);
+    assert_eq!(app.status.as_ref().unwrap().text, "opened: beta");
+    assert_eq!(
+        sb.names(&sb.root),
+        [".hidden", "alpha", "beta", "file.txt", "gamma"]
+    );
+    assert!(sb.names(&sb.trash_dir).is_empty() && !sb.archive_dir().exists());
+
+    fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
+    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('o'));
+    assert_eq!(
+        sb.opened.lock().unwrap().last().unwrap(),
+        &sb.archive_dir().join("old")
+    );
+
+    type_text(&mut app, &ctx, "zzz");
+    app.on_key(&ctx, ctrl('o'));
+    assert_eq!(
+        sb.opened.lock().unwrap().len(),
+        2,
+        "nothing is opened when no entry matches"
+    );
+    assert_eq!(app.status.as_ref().unwrap().text, "nothing to open");
+}
+
+#[test]
+fn the_header_mentions_ctrl_o() {
+    let (_sb, _ctx, mut app) = setup();
+    assert!(screen(&render(&mut app, 120, 20)).contains("Ctrl+O"));
+}
+
+#[test]
+fn the_shortcut_line_wraps_on_narrow_terminals_without_losing_keys() {
+    let (_sb, _ctx, mut app) = setup();
+    for width in [40, 60, 80, 100] {
+        let text = screen(&render(&mut app, width, 24));
+        for expected in [
+            "Enter", "Ctrl+A", "Ctrl+R", "Ctrl+T", "Ctrl+O", "Ctrl+P", "Esc quit",
+        ] {
+            assert!(
+                text.contains(expected),
+                "width {width}: missing {expected:?}\n{text}"
+            );
+        }
+        assert!(
+            text.contains("alpha"),
+            "width {width}: the list is still shown\n{text}"
+        );
+    }
+}

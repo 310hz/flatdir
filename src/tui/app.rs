@@ -157,6 +157,7 @@ impl App {
             }
             (KeyCode::Char('p'), true) => self.preview_mode = self.preview_mode.toggled(),
             (KeyCode::Char('r'), true) => self.execute(ctx),
+            (KeyCode::Char('o'), true) => self.open_current(ctx),
             (KeyCode::Char('u'), true) => {
                 self.query.clear();
                 self.refilter();
@@ -242,6 +243,17 @@ impl App {
                 self.reload(ctx);
                 self.info(message);
             }
+            Err(e) => self.fail(e),
+        }
+    }
+
+    fn open_current(&mut self, ctx: &Context) {
+        let Some(entry) = self.current() else {
+            return self.info("nothing to open");
+        };
+        let (name, path) = (entry.name.clone(), entry.path.clone());
+        match ctx.opener.open(&path) {
+            Ok(()) => self.info(format!("opened: {name}")),
             Err(e) => self.fail(e),
         }
     }

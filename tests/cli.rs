@@ -48,6 +48,18 @@ impl Sandbox {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
     }
 
+    /// Fake `open` / `xdg-open` that only log their argument, so no real file manager is launched.
+    fn fake_open(&self) -> PathBuf {
+        let log = self.tmp.join("open.log");
+        let body = format!("#!/bin/sh\necho \"$1\" >> '{}'\n", log.display());
+        for name in ["open", "xdg-open"] {
+            let path = self.tmp.join("bin").join(name);
+            fs::write(&path, &body).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        log
+    }
+
     /// Without a terminal: stdin is null and stderr is a pipe.
     fn run(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_flatdir"))
@@ -331,4 +343,15 @@ fn autowrap_is_disabled_only_while_the_tui_runs() {
     let off = text.find("\x1b[?7l").expect("autowrap off");
     let on = text.rfind("\x1b[?7h").expect("autowrap restored");
     assert!(off < on, "restored after being disabled");
+}
+
+#[test]
+fn ctrl_o_runs_the_open_command_with_the_current_directory() {
+    let sb = Sandbox::new();
+    sb.track();
+    let log = sb.fake_open();
+    sb.run_in_pty(&[], &[], "alpha", "\x0f|\x03");
+    let logged = fs::read_to_string(&log).unwrap_or_default();
+    assert_eq!(logged.trim(), sb.root.join("alpha").to_str().unwrap());
+    assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
 }

@@ -15,6 +15,10 @@ pub trait Prompter {
     fn confirm(&self, message: &str) -> bool;
 }
 
+pub trait Opener {
+    fn open(&self, path: &Path) -> Result<()>;
+}
+
 pub trait ScoreSource: Send + Sync {
     fn scores(&self) -> HashMap<PathBuf, f64>;
 }
@@ -101,5 +105,30 @@ pub fn play_trash_sound() {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn();
+    }
+}
+
+/// Opens a directory in the system file manager (Finder on macOS).
+pub struct SystemOpener;
+
+impl Opener for SystemOpener {
+    fn open(&self, path: &Path) -> Result<()> {
+        let program = if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        };
+        let mut child = Command::new(program)
+            .arg(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .with_context(|| format!("failed to run {program}"))?;
+        // Reap it in the background so a slow file manager never blocks the TUI.
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(())
     }
 }

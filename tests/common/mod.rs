@@ -5,14 +5,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use flatdir::candidates;
 use flatdir::config::Config;
 use flatdir::context::Context;
 use flatdir::paths::Env;
 use flatdir::select::{SelectOpts, Selector};
-use flatdir::services::{Prompter, ScoreSource, Trasher};
+use flatdir::services::{Opener, Prompter, ScoreSource, Trasher};
 use tempfile::TempDir;
 
 pub struct NeverSelector;
@@ -52,6 +52,15 @@ impl Trasher for FakeTrasher {
     }
 }
 
+pub struct FakeOpener(pub Arc<Mutex<Vec<PathBuf>>>);
+
+impl Opener for FakeOpener {
+    fn open(&self, path: &Path) -> anyhow::Result<()> {
+        self.0.lock().unwrap().push(path.to_path_buf());
+        Ok(())
+    }
+}
+
 pub struct FakePrompter(pub bool);
 
 impl Prompter for FakePrompter {
@@ -75,6 +84,7 @@ pub struct Sandbox {
     pub archive_root: PathBuf,
     pub trash_dir: PathBuf,
     pub config_path: PathBuf,
+    pub opened: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl Sandbox {
@@ -97,6 +107,7 @@ impl Sandbox {
             home,
             root,
             trash_dir,
+            opened: Arc::default(),
         }
     }
 
@@ -119,6 +130,7 @@ impl Sandbox {
                 trashed: RefCell::new(vec![]),
             }),
             prompter: Box::new(FakePrompter(false)),
+            opener: Box::new(FakeOpener(Arc::clone(&self.opened))),
             scores: Arc::new(FakeScores(HashMap::new())),
         }
     }

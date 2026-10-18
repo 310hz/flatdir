@@ -27,15 +27,22 @@ pub struct PreviewCache {
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
+    // The shortcut line wraps on narrow terminals; give it the rows it needs so nothing is cut off.
+    let (title, hints) = header_lines(app);
+    let width = frame.area().width.max(1) as usize;
+    let header_height = (1 + hints.width().div_ceil(width)).min(5) as u16;
     let [header, query, body, status] = Layout::vertical([
-        Constraint::Length(3),
+        Constraint::Length(header_height),
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(1),
     ])
     .areas(frame.area());
 
-    draw_header(frame, app, header);
+    frame.render_widget(
+        Paragraph::new(vec![title, hints]).wrap(Wrap { trim: false }),
+        header,
+    );
     draw_query(frame, app, query);
 
     if body.width >= MIN_WIDTH_FOR_PREVIEW {
@@ -66,7 +73,7 @@ pub fn action_label(kind: ListKind, action: Action) -> &'static str {
     }
 }
 
-fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
+fn header_lines(app: &App) -> (Line<'static>, Line<'static>) {
     let tab = |label: &'static str, active: bool| {
         let style = if active {
             Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD)
@@ -120,16 +127,15 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw("   "),
         key("Ctrl+T"),
         Span::styled(format!(" {switch}   "), dim()),
+        key("Ctrl+O"),
+        Span::styled(" open   ", dim()),
         key("Ctrl+P"),
         Span::styled(format!(" preview: {preview_name}   "), dim()),
         key("Esc"),
         Span::styled(" quit", dim()),
     ]);
 
-    frame.render_widget(
-        Paragraph::new(vec![Line::from(title), hints]).wrap(Wrap { trim: false }),
-        area,
-    );
+    (Line::from(title), hints)
 }
 
 fn draw_query(frame: &mut Frame, app: &App, area: Rect) {

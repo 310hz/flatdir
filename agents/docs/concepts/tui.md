@@ -12,6 +12,7 @@
 | `Ctrl+A` | Tracked / Archived の切り替え。マークとアクションはリセット |
 | `Ctrl+R` | 現在のアクションを、マーク済み(無ければ現在行)に実行 |
 | `Ctrl+T` | アクションの切り替え: Archive(Archived 側では Restore) ⇄ Remove(ゴミ箱) |
+| `Ctrl+O` | 現在行のディレクトリをファイルマネージャで開く(macOS は `open`=Finder、他は `xdg-open`)。何も変更しない |
 | `Ctrl+P` | プレビュー切り替え: README(Markdown)⇄ ツリー。README が無ければツリーに自動フォールバック |
 | `Esc` / `Ctrl+C` | 終了 |
 
