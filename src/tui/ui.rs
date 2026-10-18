@@ -12,6 +12,7 @@ use unicode_width::UnicodeWidthStr;
 
 use super::app::{Action, App, ListKind};
 use super::preview::{self, PreviewMode, Shown};
+use super::text;
 
 const MIN_WIDTH_FOR_PREVIEW: u16 = 70;
 pub const MARK_COLOR: Color = Color::Magenta;
@@ -171,6 +172,9 @@ fn draw_list(frame: &mut Frame, app: &mut App, area: Rect) {
             Span::raw("  ")
         }];
         for (pos, ch) in entry.name.chars().enumerate() {
+            if text::is_invisible(ch) {
+                continue;
+            }
             let hit = view.hits.binary_search(&(pos as u32)).is_ok();
             let style = if hit {
                 base.add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
@@ -236,7 +240,7 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
             } else {
                 Style::default()
             };
-            Line::from(Span::styled(s.text.clone(), style))
+            Line::from(Span::styled(text::sanitize(&s.text).into_owned(), style))
         }
         (None, Action::Remove) => Line::from(Span::styled(
             "REMOVE mode: Ctrl+R moves the marked (or current) entries to the Trash. Ctrl+T switches back.",

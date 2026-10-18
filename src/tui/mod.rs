@@ -1,10 +1,11 @@
 mod app;
 mod markdown;
 pub mod preview;
+pub mod text;
 mod tree;
 pub mod ui;
 
-use std::io::{self, BufWriter, Stderr};
+use std::io::{self, BufWriter, Stderr, Write};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, TryRecvError};
 use std::time::Duration;
@@ -32,6 +33,9 @@ impl TerminalGuard {
     fn enter() -> Result<Self> {
         enable_raw_mode()?;
         execute!(io::stderr(), EnterAlternateScreen, EnableBracketedPaste)?;
+        // If the terminal ever disagrees with ratatui about a character's width, a line that
+        // overflows must not wrap into the left edge of the next row.
+        io::stderr().write_all(AUTOWRAP_OFF)?;
         let default_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
             restore();
@@ -47,7 +51,11 @@ impl Drop for TerminalGuard {
     }
 }
 
+const AUTOWRAP_OFF: &[u8] = b"\x1b[?7l";
+const AUTOWRAP_ON: &[u8] = b"\x1b[?7h";
+
 fn restore() {
+    let _ = io::stderr().write_all(AUTOWRAP_ON);
     let _ = disable_raw_mode();
     let _ = execute!(io::stderr(), DisableBracketedPaste, LeaveAlternateScreen);
 }

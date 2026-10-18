@@ -479,3 +479,53 @@ fn narrow_terminals_drop_the_preview_instead_of_breaking() {
     assert!(text.contains("alpha") && !text.contains("README"), "{text}");
     let _ = PathBuf::new();
 }
+
+/// Regression: `⚠️` (U+26A0 + VS16) in a Japanese sentence made terminals and ratatui disagree about
+/// the row width, so the end of a line could spill into the left edge of the next row.
+#[test]
+fn width_ambiguous_invisible_characters_never_reach_the_screen() {
+    let (sb, ctx, mut app) = setup();
+    fs::write(
+        sb.root.join("alpha/README.md"),
+        "\u{FEFF}# \u{1F5F3}\u{FE0F} \u{30BF}\u{30A4}\u{30C8}\u{30EB}\n\n\u{30EB}\u{30A2}\u{30A6}\u{30C8}\u{3067}\u{26A0}\u{FE0F}\u{3092}\u{4F7F}\u{3048}\u{308B}\u{3088} \u{1F468}\u{200D}\u{1F469}\n\n```\n\u{0009}tabbed\n```\n",
+    )
+    .unwrap();
+    fs::create_dir_all(sb.root.join("delta\u{FE0F}")).unwrap();
+    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('a'));
+    app = App::new(&ctx).unwrap();
+    app.status = Some(flatdir::tui::Status {
+        text: "archived: x\u{FE0F}y".into(),
+        is_error: false,
+    });
+
+    let buffer = render(&mut app, 120, 24);
+    for cell in &buffer.content {
+        let sym = cell.symbol();
+        assert!(
+            !sym.chars()
+                .any(|c| matches!(c, '\u{FE0F}' | '\u{FE0E}' | '\u{200D}' | '\u{FEFF}' | '\t')),
+            "width-ambiguous character on screen: {sym:?}"
+        );
+    }
+    let text = screen(&buffer);
+    assert!(
+        text.contains("\u{26A0}") && text.contains("tabbed"),
+        "the visible text is kept:\n{text}"
+    );
+}
+
+#[test]
+fn sanitize_only_touches_invisible_characters_and_tabs() {
+    use flatdir::tui::text::sanitize;
+    assert_eq!(
+        sanitize("plain \u{3072}\u{3089}\u{304C}\u{306A}"),
+        "plain \u{3072}\u{3089}\u{304C}\u{306A}"
+    );
+    assert_eq!(sanitize("a\u{FE0F}b\u{200D}c\u{FEFF}"), "abc");
+    assert_eq!(sanitize("\tx"), "    x");
+    assert!(matches!(
+        sanitize("untouched"),
+        std::borrow::Cow::Borrowed(_)
+    ));
+}

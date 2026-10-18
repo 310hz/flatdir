@@ -320,3 +320,15 @@ fn the_screen_uses_only_palette_colors() {
         assert!(!text.contains(marker), "truecolor escape found: {marker}");
     }
 }
+
+/// Autowrap is off while the TUI is up (so an overflowing row cannot spill into the next row's left edge)
+/// and is switched back on when it exits.
+#[test]
+fn autowrap_is_disabled_only_while_the_tui_runs() {
+    let sb = Sandbox::new();
+    sb.track();
+    let text = sb.run_in_pty(&[], &[], "alpha", "\x03");
+    let off = text.find("\x1b[?7l").expect("autowrap off");
+    let on = text.rfind("\x1b[?7h").expect("autowrap restored");
+    assert!(off < on, "restored after being disabled");
+}

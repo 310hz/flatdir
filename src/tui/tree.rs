@@ -4,6 +4,8 @@ use ignore::WalkBuilder;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use super::text::sanitize;
+
 const MAX_DEPTH: usize = 3;
 const MAX_ENTRIES: usize = 300;
 
@@ -31,7 +33,7 @@ pub fn render(root: &Path) -> Vec<Line<'static>> {
         }
         nodes.push(Node {
             depth: entry.depth(),
-            name: entry.file_name().to_string_lossy().into_owned(),
+            name: sanitize(&entry.file_name().to_string_lossy()).into_owned(),
             is_dir: entry.file_type().is_some_and(|t| t.is_dir()),
         });
     }

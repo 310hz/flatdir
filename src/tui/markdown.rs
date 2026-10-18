@@ -5,6 +5,8 @@ use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, T
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use super::text::sanitize;
+
 const MAX_LINES: usize = 400;
 
 struct Renderer {
@@ -58,7 +60,8 @@ impl Renderer {
 
     fn text(&mut self, text: &str) {
         let style = self.style();
-        self.spans.push(Span::styled(text.to_string(), style));
+        self.spans
+            .push(Span::styled(sanitize(text).into_owned(), style));
     }
 
     fn flush(&mut self) {
@@ -97,7 +100,8 @@ impl Renderer {
             Event::Text(t) => self.text(&t),
             Event::Code(t) => {
                 let style = self.style().fg(Color::Cyan);
-                self.spans.push(Span::styled(t.to_string(), style));
+                self.spans
+                    .push(Span::styled(sanitize(&t).into_owned(), style));
             }
             Event::SoftBreak => self.text(" "),
             Event::HardBreak => self.flush(),
