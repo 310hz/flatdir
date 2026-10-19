@@ -116,15 +116,10 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
         ),
     ];
 
-    let other_list = match app.kind {
-        ListKind::Active => "Show Archived",
-        ListKind::Archived => "Show Active",
-    };
     let preview_name = match app.preview_mode {
         PreviewMode::Markdown => "Markdown",
         PreviewMode::Tree => "Tree",
     };
-    let other_list = pad_to_longest(other_list, &["Show Archived", "Show Active"]);
     let toggle = pad_to_longest(toggle_label(app.kind), &["Archive", "Restore"]);
     let preview_name = pad_to_longest(preview_name, &["Markdown", "Tree"]);
     let item = |key: &'static str, label: String| {
@@ -134,10 +129,10 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
         ]
     };
     let items = vec![
-        item("Enter", "Change Directory".into()),
+        item("Enter", "cd".into()),
         item("Tab", "Mark".into()),
         item("Ctrl+Q", "Clear Marks".into()),
-        item("Ctrl+A", other_list),
+        item("Ctrl+A", "Toggle Active/Archived".into()),
         item("Ctrl+T", toggle),
         item("Ctrl+R", "Move to Trash".into()),
         item("Ctrl+O", OPEN_LABEL.into()),

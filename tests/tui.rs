@@ -580,10 +580,10 @@ fn the_header_mentions_ctrl_o() {
 fn shortcuts_wrap_only_between_items() {
     let (_sb, _ctx, mut app) = setup();
     let items = [
-        "Enter Change Directory",
+        "Enter cd",
         "Tab Mark",
         "Ctrl+Q Clear Marks",
-        "Ctrl+A Show Archived",
+        "Ctrl+A Toggle Active/Archived",
         "Ctrl+T Archive",
         "Ctrl+R Move to Trash",
         "Ctrl+O Open in",
