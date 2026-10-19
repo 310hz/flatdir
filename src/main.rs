@@ -45,6 +45,8 @@ enum Command {
     /// Show the managed root, directory counts and required commands
     Status,
     /// Print the shell function that makes Enter cd (use: eval "$(flatdir shell)")
+    // Hidden: it is set up once, and Enter without the function prints how to do it.
+    #[command(hide = true)]
     Shell {
         /// The same function works in both, so this only exists for habit (`flatdir shell zsh`)
         #[arg(value_enum)]

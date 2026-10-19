@@ -618,6 +618,12 @@ fn the_shell_function_is_printed_and_documented_verbatim() {
             "{shell}"
         );
     }
+    let help = String::from_utf8_lossy(&sb.run(&["--help"]).stdout).into_owned();
+    assert!(
+        !help.contains("shell"),
+        "a one-time setup command stays out of --help:\n{help}"
+    );
+
     let fish = sb.run(&["shell", "fish"]);
     assert!(
         !fish.status.success() && fish.stdout.is_empty(),
