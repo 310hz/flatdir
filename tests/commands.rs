@@ -176,7 +176,7 @@ fn unknown_row_from_the_selector_is_an_error() {
 }
 
 #[test]
-fn track_sets_a_single_root() {
+fn the_root_can_be_set_replaced_and_unset() {
     let sb = Sandbox::new();
     let other = sb.home.join("other");
     fs::create_dir_all(&other).unwrap();
@@ -184,30 +184,68 @@ fn track_sets_a_single_root() {
     let mut ctx = sb.ctx();
     ctx.config.root = None;
 
-    let (root, added) = cmd::track(&mut ctx, &sb.root).unwrap();
-    assert_eq!((root.as_path(), added), (sb.root.as_path(), true));
+    let change = cmd::set_root(&mut ctx, &sb.root).unwrap();
+    assert_eq!(
+        (change.root.as_path(), change.previous, change.changed),
+        (sb.root.as_path(), None, true)
+    );
     assert_eq!(
         Config::load(&sb.config_path).unwrap().root.as_deref(),
         Some(sb.root.as_path())
     );
 
-    assert!(!cmd::track(&mut ctx, &sb.root).unwrap().1);
-    let err = cmd::track(&mut ctx, &other).unwrap_err().to_string();
-    assert!(err.contains("already tracking"), "{err}");
+    let again = cmd::set_root(&mut ctx, &sb.root).unwrap();
+    assert!(!again.changed, "setting the same root is a no-op");
 
-    cmd::untrack(&mut ctx).unwrap();
+    // A different root simply replaces the old one; no separate "unset" step is needed.
+    let replaced = cmd::set_root(&mut ctx, &other).unwrap();
+    assert_eq!(
+        (replaced.root.as_path(), replaced.previous.as_deref()),
+        (other.as_path(), Some(sb.root.as_path()))
+    );
+    assert_eq!(
+        Config::load(&sb.config_path).unwrap().root.as_deref(),
+        Some(other.as_path())
+    );
+
+    assert_eq!(cmd::unset_root(&mut ctx).unwrap(), other);
     assert_eq!(Config::load(&sb.config_path).unwrap().root, None);
+    assert!(cmd::unset_root(&mut ctx).is_err(), "nothing left to unset");
 }
 
 #[test]
-fn track_rejects_paths_outside_home() {
+fn archives_of_a_previous_root_come_back_when_it_is_set_again() {
+    let sb = Sandbox::new();
+    let other = sb.home.join("other");
+    fs::create_dir_all(&other).unwrap();
+    fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
+
+    let mut ctx = sb.ctx();
+    cmd::set_root(&mut ctx, &other).unwrap();
+    assert!(
+        candidates::archived(&ctx).unwrap().is_empty(),
+        "the other root has no archive"
+    );
+    cmd::set_root(&mut ctx, &sb.root).unwrap();
+    let names: Vec<String> = candidates::archived(&ctx)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.name)
+        .collect();
+    assert_eq!(names, ["old"]);
+}
+
+#[test]
+fn the_root_must_be_an_existing_directory_under_home() {
     let sb = Sandbox::new();
     let outside = sb.config_path.parent().unwrap().join("outside");
     fs::create_dir_all(&outside).unwrap();
     let mut ctx = sb.ctx();
     ctx.config.root = None;
-    assert!(cmd::track(&mut ctx, &outside).is_err());
-    assert!(cmd::track(&mut ctx, &sb.home).is_err());
+    assert!(cmd::set_root(&mut ctx, &outside).is_err());
+    assert!(cmd::set_root(&mut ctx, &sb.home).is_err());
+    assert!(cmd::set_root(&mut ctx, &sb.home.join("missing")).is_err());
+    assert_eq!(ctx.config.root, None);
 }
 
 #[test]

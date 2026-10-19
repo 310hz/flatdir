@@ -59,7 +59,7 @@ pub fn status(ctx: &Context) -> Status {
 impl fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.root {
-            None => writeln!(f, "root:        (not set; run: flatdir track <path>)")?,
+            None => writeln!(f, "root:        (not set; run: flatdir root <path>)")?,
             Some(r) => {
                 writeln!(f, "root:        {}", r.path.display())?;
                 match r.directories {

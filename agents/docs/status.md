@@ -2,7 +2,7 @@
 
 ## 現在の状態
 
-- sh 版を Rust で再実装し、選択・アーカイブ・復元・削除を 1 つの TUI に統合済み([concepts/tui.md](../concepts/tui.md))。残るサブコマンドは track/untrack/status/init/clone。`just check` が通る。
+- sh 版を Rust で再実装し、選択・アーカイブ・復元・削除を 1 つの TUI に統合済み([concepts/tui.md](../concepts/tui.md))。残るサブコマンドは root/status/init/clone。`just check` が通る。
 - `Ctrl+O` で現在行を Finder で開く。`open` / `xdg-open` は任意機能のための外部呼び出し(`Opener` の裏にあり、テストは偽物)。
 - 外部コマンド依存を廃止: fzf→自前 TUI(`clone -s` のみ skim)、trash→`trash` crate、rich/eza→内蔵。`gh`・`git`・`zoxide` は任意機能のため外部のまま。
 - ユーザー向けの文言(ヘルプ・メッセージ・README・コード内コメント)は英語。`agents/` 配下のドキュメントは日本語。

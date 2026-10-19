@@ -5,9 +5,19 @@ use anyhow::{Context as _, Result, bail};
 
 use crate::context::Context;
 
-/// Only one managed root is supported; untrack first to replace it.
-/// Returns (registered root, whether it was newly registered).
-pub fn track(ctx: &mut Context, path: &Path) -> Result<(PathBuf, bool)> {
+/// What `set_root` did.
+#[derive(Debug, PartialEq, Eq)]
+pub struct RootChange {
+    pub root: PathBuf,
+    /// The root that was replaced, if there was a different one.
+    pub previous: Option<PathBuf>,
+    /// `false` when the given path already was the root.
+    pub changed: bool,
+}
+
+/// Sets the managed root, replacing any previous one. Archives of the old root stay where they are
+/// (under its own path) and show up again if it is set back.
+pub fn set_root(ctx: &mut Context, path: &Path) -> Result<RootChange> {
     let abs =
         fs::canonicalize(path).with_context(|| format!("not a directory: {}", path.display()))?;
     if !abs.is_dir() {
@@ -26,23 +36,25 @@ pub fn track(ctx: &mut Context, path: &Path) -> Result<(PathBuf, bool)> {
     };
     let root = ctx.env.home.join(rel);
 
-    match &ctx.config.root {
-        Some(current) if *current == root => return Ok((root, false)),
-        Some(current) => {
-            bail!(
-                "already tracking {} (run: flatdir untrack)",
-                current.display()
-            )
-        }
-        None => {}
+    let previous = ctx.config.root.clone();
+    if previous.as_ref() == Some(&root) {
+        return Ok(RootChange {
+            root,
+            previous: None,
+            changed: false,
+        });
     }
-
     ctx.config.root = Some(root.clone());
     ctx.config.save(&ctx.env.config_path)?;
-    Ok((root, true))
+    Ok(RootChange {
+        root,
+        previous,
+        changed: true,
+    })
 }
 
-pub fn untrack(ctx: &mut Context) -> Result<PathBuf> {
+/// Clears the managed root and returns the one that was set.
+pub fn unset_root(ctx: &mut Context) -> Result<PathBuf> {
     let root = ctx.root()?.to_path_buf();
     ctx.config.root = None;
     ctx.config.save(&ctx.env.config_path)?;

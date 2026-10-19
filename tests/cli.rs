@@ -84,7 +84,7 @@ impl Sandbox {
     }
 
     fn track(&self) {
-        let out = self.run(&["track", self.root.to_str().unwrap()]);
+        let out = self.run(&["root", self.root.to_str().unwrap()]);
         assert!(
             out.status.success(),
             "{}",
@@ -189,7 +189,7 @@ impl Sandbox {
 }
 
 #[test]
-fn track_and_status_round_trip() {
+fn root_status_round_trip() {
     let sb = Sandbox::new();
     sb.track();
     let config = fs::read_to_string(sb.home.join(".config/flatdir/config.toml")).unwrap();
@@ -428,4 +428,55 @@ fn ctrl_q_resets_the_marks_before_an_action() {
     sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x11|\x14|\x03");
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
     assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
+}
+
+#[test]
+fn the_root_command_shows_sets_replaces_and_unsets() {
+    let sb = Sandbox::new();
+    let other = sb.home.join("other");
+    fs::create_dir_all(&other).unwrap();
+
+    let out = sb.run(&["root"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("flatdir root <path>"));
+
+    sb.track();
+    assert_eq!(stdout(&sb.run(&["root"])), sb.root.to_str().unwrap());
+
+    // Setting another one replaces it without any extra step.
+    let out = sb.run(&["root", other.to_str().unwrap()]);
+    assert!(out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("was"),
+        "mentions the replaced root"
+    );
+    assert_eq!(stdout(&sb.run(&["root"])), other.to_str().unwrap());
+
+    assert!(sb.run(&["root", "--unset"]).status.success());
+    assert!(!sb.run(&["root"]).status.success());
+    assert!(
+        !sb.run(&["root", "--unset"]).status.success(),
+        "nothing to unset"
+    );
+    assert!(
+        !sb.run(&["root", other.to_str().unwrap(), "--unset"])
+            .status
+            .success(),
+        "path and --unset conflict"
+    );
+}
+
+#[test]
+fn the_old_track_commands_are_gone() {
+    let sb = Sandbox::new();
+    for args in [&["track", "/tmp"][..], &["untrack"]] {
+        assert!(
+            !sb.run(args).status.success(),
+            "{args:?} must not exist any more"
+        );
+    }
+}
+
+fn stdout(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
 }

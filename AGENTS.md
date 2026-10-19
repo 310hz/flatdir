@@ -4,7 +4,7 @@
 
 ## 最重要: 実ディレクトリを移動・削除するツール
 
-`remove` / `archive` / `restore` / `clone` / `init` / `track` / `untrack` は実データを変更する。旧 sh 版は、テスト中に非対話の fzf(`--filter=`)で全件が選択され、全プロジェクトの移動・削除を起こした。
+`remove` / `archive` / `restore` / `clone` / `init` / `root` は実データを変更する。旧 sh 版は、テスト中に非対話の fzf(`--filter=`)で全件が選択され、全プロジェクトの移動・削除を起こした。
 
 - **実環境(実 HOME・実 trash)に対してバイナリを実行しない。** 検証は `cargo test` に任せる。手動で試すなら、`env -i` で環境を作り直し、使い捨ての `HOME` だけで動かす(`tests/cli.rs` が手本。TUI は pty で操作する)。ゴミ箱への Remove はサンドボックス外のゴミ箱に届くので、実バイナリでは実行しない(`tests/tui.rs` が偽の trasher で検証する)。
 - 安全ガードは [concepts/safety.md](agents/docs/concepts/safety.md)。弱める変更(TTY 判定の撤廃、全件選択の許可、環境変数で挙動を変えられる実装への変更、削除操作の追加・対象の拡大)は、ユーザーに確認してから行う。

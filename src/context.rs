@@ -25,7 +25,7 @@ impl Context {
         self.config
             .root
             .as_deref()
-            .ok_or_else(|| anyhow!("no managed root (did you run: flatdir track <path> ?)"))
+            .ok_or_else(|| anyhow!("no managed root (run: flatdir root <path>)"))
     }
 
     /// Where archived directories live. There is a single managed root, so everything directly under this is an archive.

@@ -25,10 +25,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Set the managed root
-    Track { path: PathBuf },
-    /// Unset the managed root
-    Untrack,
+    /// Show the managed root, or set it with a path (replaces the current one)
+    Root {
+        path: Option<PathBuf>,
+        /// Unset the managed root
+        #[arg(long, conflicts_with = "path")]
+        unset: bool,
+    },
     /// Show the managed root, directory counts and required commands
     Status,
     /// Create a new directory under the root
@@ -68,16 +71,27 @@ fn context() -> Result<Context> {
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
         None => print_path(flatdir::tui::run(&context()?)?),
-        Some(Command::Track { path }) => {
-            let (root, added) = cmd::track(&mut context()?, &path)?;
-            if added {
-                eprintln!("tracked: {}", root.display());
-            } else {
-                eprintln!("already registered: {}", root.display());
+        Some(Command::Root {
+            path: Some(path), ..
+        }) => {
+            let change = cmd::set_root(&mut context()?, &path)?;
+            match (change.changed, change.previous) {
+                (false, _) => eprintln!("already the root: {}", change.root.display()),
+                (true, Some(old)) => {
+                    eprintln!("root: {} (was {})", change.root.display(), old.display())
+                }
+                (true, None) => eprintln!("root: {}", change.root.display()),
             }
         }
-        Some(Command::Untrack) => {
-            eprintln!("untracked: {}", cmd::untrack(&mut context()?)?.display())
+        Some(Command::Root { unset: true, .. }) => {
+            eprintln!(
+                "unset root: {}",
+                cmd::unset_root(&mut context()?)?.display()
+            )
+        }
+        Some(Command::Root { .. }) => {
+            let ctx = context()?;
+            println!("{}", ctx.root()?.display());
         }
         Some(Command::Status) => println!("{}", cmd::status(&context()?)),
         Some(Command::Init { name, git }) => {
