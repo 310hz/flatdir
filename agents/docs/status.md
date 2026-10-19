@@ -14,7 +14,6 @@
 
 ## 未解決事項
 
-- `feat/tui-create` ブランチで New ビュー(作成・clone の TUI 統合)を実装した。main には未マージ。ユーザーが実機で試してからマージする。
 - 今後の予定: Python(`uv init` 済み)などの雛形を New ビューの種類に足す。足し方は [concepts/tui.md](concepts/tui.md) の「拡張」。
 
 - 未公開(GitHub 未アップロード)。公開後は `cargo install --git <URL>` で入る想定。

@@ -41,7 +41,7 @@ enum Command {
         #[arg(long, conflicts_with_all = ["path", "unset"])]
         cd: bool,
     },
-    /// Show the managed root, directory counts and required commands
+    /// Show the managed root, directory counts and optional commands
     Status,
     /// Print the shell function that makes Enter cd (use: eval "$(flatdir shell)")
     // Hidden: it is set up once, and Enter without the function prints how to do it.
