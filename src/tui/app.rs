@@ -73,6 +73,8 @@ pub struct App {
     pub status: Option<Status>,
     pub view: Vec<View>,
     pub panes: Panes,
+    /// The shortcut list is open on top of everything; keys go to it instead of the query.
+    pub help: bool,
     /// First visible row of the preview. Reset by the UI when the previewed entry or mode changes.
     pub preview_scroll: u16,
     active: Vec<Entry>,
@@ -95,6 +97,7 @@ impl App {
             status: None,
             view: Vec::new(),
             panes: Panes::default(),
+            help: false,
             preview_scroll: 0,
             active,
             archived: None,
@@ -153,6 +156,10 @@ impl App {
     /// Returns whether the screen needs a redraw: terminals also report plain mouse motion, which
     /// must not cost a redraw each time.
     pub fn on_mouse(&mut self, event: MouseEvent) -> bool {
+        // The list under the help window is hidden, so it must not be clicked or scrolled blindly.
+        if self.help {
+            return false;
+        }
         let at = Position::new(event.column, event.row);
         let direction = match event.kind {
             MouseEventKind::ScrollUp => -1,
@@ -190,6 +197,9 @@ impl App {
     }
 
     pub fn on_paste(&mut self, text: &str) {
+        if self.help {
+            return;
+        }
         // Pasted text is data, never commands: control characters are dropped.
         self.query.extend(text.chars().filter(|c| !c.is_control()));
         self.refilter();
@@ -200,6 +210,15 @@ impl App {
             return Outcome::Continue;
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // While the help is open, nothing else may run: an action on the hidden list would surprise.
+        if self.help {
+            match (key.code, ctrl) {
+                (KeyCode::Char('c'), true) => return Outcome::Quit,
+                (KeyCode::Esc | KeyCode::Char('?'), _) => self.help = false,
+                _ => {}
+            }
+            return Outcome::Continue;
+        }
         match (key.code, ctrl) {
             (KeyCode::Esc, _) | (KeyCode::Char('c'), true) => return Outcome::Quit,
             (KeyCode::Enter, _) => {
@@ -228,6 +247,7 @@ impl App {
                 self.query.pop();
                 self.refilter();
             }
+            (KeyCode::Char('?'), false) => self.help = true,
             (KeyCode::Char(c), false) if !key.modifiers.contains(KeyModifiers::ALT) => {
                 self.query.push(c);
                 self.refilter();

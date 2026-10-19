@@ -388,18 +388,28 @@ fn screen(buffer: &ratatui::buffer::Buffer) -> String {
 }
 
 #[test]
-fn the_header_lists_the_shortcuts_and_what_ctrl_t_does_in_each_list() {
+fn help_lists_the_shortcuts_and_what_ctrl_t_does_in_each_list() {
     let (_sb, ctx, mut app) = setup();
+    app.on_key(&ctx, key(KeyCode::Char('?')));
     let text = screen(&render(&mut app, 120, 20));
     for expected in [
-        "Active", "Archived", "Enter", "Tab", "Ctrl+A", "Ctrl+T", "Archive", "Ctrl+R", "Trash",
-        "Ctrl+O", "Ctrl+P", "Esc",
+        "Enter",
+        "Tab / Shift+Tab",
+        "Ctrl+Q",
+        "Ctrl+A",
+        "Ctrl+T            Archive",
+        "Ctrl+R",
+        "Ctrl+O",
+        "Ctrl+P",
+        "Esc",
     ] {
         assert!(text.contains(expected), "missing {expected:?}:\n{text}");
     }
+    app.on_key(&ctx, key(KeyCode::Esc));
     app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, key(KeyCode::Char('?')));
     let text = screen(&render(&mut app, 120, 20));
-    assert!(text.contains("Restore"), "{text}");
+    assert!(text.contains("Ctrl+T            Restore"), "{text}");
 }
 
 #[test]
@@ -571,26 +581,37 @@ fn ctrl_o_opens_the_current_entry_in_the_file_manager_and_changes_nothing() {
 }
 
 #[test]
-fn the_header_mentions_ctrl_o() {
+fn the_title_row_points_to_the_help_at_its_right_end() {
     let (_sb, _ctx, mut app) = setup();
-    assert!(screen(&render(&mut app, 120, 20)).contains("Ctrl+O"));
+    for width in [60, 100] {
+        let text = screen(&render(&mut app, width, 20));
+        let title = text.lines().next().unwrap();
+        assert!(title.starts_with("flatdir"), "{title:?}");
+        assert!(title.ends_with("? Help"), "width {width}: {title:?}");
+        assert!(
+            !text.contains("Ctrl+"),
+            "the shortcuts are only in the help"
+        );
+    }
 }
 
 #[test]
-fn shortcuts_wrap_only_between_items() {
-    let (_sb, _ctx, mut app) = setup();
+fn help_opens_on_top_and_shows_every_item_whole() {
+    let (_sb, ctx, mut app) = setup();
+    app.on_key(&ctx, key(KeyCode::Char('?')));
     let items = [
-        "Enter cd",
-        "Tab Mark",
-        "Ctrl+Q Clear Marks",
-        "Ctrl+A Toggle Active/Archived",
-        "Ctrl+T Archive",
-        "Ctrl+R Move to Trash",
-        "Ctrl+O Open in",
-        "Ctrl+P Preview: Markdown",
-        "Esc Quit",
+        "Enter             cd",
+        "Tab / Shift+Tab   Mark",
+        "Ctrl+Q            Clear Marks",
+        "Ctrl+A            Toggle Window Active/Archived",
+        "Ctrl+T            Archive",
+        "Ctrl+R            Move to Trash",
+        "Ctrl+O            Open in",
+        "Ctrl+P            Toggle Preview",
+        "Ctrl+U            Clear Query",
+        "Esc               Quit",
     ];
-    for width in [30, 40, 60, 80, 100, 140] {
+    for width in [60, 80, 100, 140] {
         let text = screen(&render(&mut app, width, 24));
         for item in items {
             assert!(
@@ -598,11 +619,39 @@ fn shortcuts_wrap_only_between_items() {
                 "width {width}: {item:?} was split or lost:\n{text}"
             );
         }
-        assert!(
-            text.contains("alpha"),
-            "width {width}: the list is still shown\n{text}"
-        );
     }
+}
+
+#[test]
+fn help_takes_the_keys_until_it_is_closed() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, key(KeyCode::Char('?')));
+    assert!(app.help);
+    assert!(
+        app.query.is_empty(),
+        "? opens the help instead of filtering"
+    );
+
+    // Nothing reaches the hidden list: no filtering, no actions, no mouse.
+    app.on_key(&ctx, key(KeyCode::Char('b')));
+    app.on_key(&ctx, ctrl('r'));
+    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, key(KeyCode::Enter));
+    app.on_paste("beta");
+    render(&mut app, 100, 20);
+    let list = app.panes.list;
+    assert!(!click(&mut app, MouseButton::Right, list.x + 3, list.y + 1));
+    assert!(app.query.is_empty() && app.marks.is_empty());
+    assert_eq!(shown(&app), ["alpha", "beta", "gamma"]);
+    assert_eq!(sb.names(&sb.archive_dir()), Vec::<String>::new());
+
+    assert_eq!(app.on_key(&ctx, key(KeyCode::Esc)), Outcome::Continue);
+    assert!(!app.help, "Esc closes the help instead of quitting");
+    app.on_key(&ctx, key(KeyCode::Char('?')));
+    app.on_key(&ctx, key(KeyCode::Char('?')));
+    assert!(!app.help, "? closes it too");
+    app.on_key(&ctx, key(KeyCode::Char('?')));
+    assert_eq!(app.on_key(&ctx, ctrl('c')), Outcome::Quit);
 }
 
 /// The preview text must not touch the vertical separator; the tree's own `│` used to line up with it.
@@ -789,72 +838,26 @@ fn find_on_screen(text: &str, needle: &str) -> Option<(usize, usize)> {
         .find_map(|(row, line)| line.find(needle).map(|col| (row, col)))
 }
 
-/// The header must not move or change height when the mode changes, because that would shift
-/// everything below it.
+/// The title row must not move when the mode changes, because that would shift everything below it.
 #[test]
-fn the_header_keeps_its_layout_when_the_mode_changes() {
-    const KEYS: [&str; 10] = [
-        "Enter", "Tab", "Ctrl+Q", "Ctrl+A", "Ctrl+T", "Ctrl+R", "Ctrl+O", "Ctrl+P", "Esc", ">",
-    ];
+fn the_title_keeps_its_layout_when_the_mode_changes() {
+    const MARKS: [&str; 5] = ["flatdir", "Active", "Archived", "? Help", ">"];
     for width in [50, 60, 80, 100, 140] {
         let (sb, ctx, mut app) = setup();
         fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
         let snapshot = |app: &mut App| {
             let text = screen(&render(app, width, 24));
-            let keys: Vec<_> = KEYS.iter().map(|k| find_on_screen(&text, k)).collect();
-            (keys, app.panes.list.y)
+            let marks: Vec<_> = MARKS.iter().map(|k| find_on_screen(&text, k)).collect();
+            (marks, app.panes.list.y)
         };
         let baseline = snapshot(&mut app);
 
         app.on_key(&ctx, ctrl('p'));
-        assert_eq!(
-            snapshot(&mut app),
-            baseline,
-            "width {width}: Ctrl+P moved the header"
-        );
-        app.on_key(&ctx, ctrl('p'));
-
+        assert_eq!(snapshot(&mut app), baseline, "width {width}: Ctrl+P");
         app.on_key(&ctx, key(KeyCode::Tab));
-        assert_eq!(
-            snapshot(&mut app),
-            baseline,
-            "width {width}: marking moved the header"
-        );
-
+        assert_eq!(snapshot(&mut app), baseline, "width {width}: marking");
         app.on_key(&ctx, ctrl('a'));
-        assert_eq!(
-            snapshot(&mut app),
-            baseline,
-            "width {width}: Ctrl+A moved the header"
-        );
-
-        app.on_key(&ctx, ctrl('p'));
-        assert_eq!(
-            snapshot(&mut app),
-            baseline,
-            "width {width}: both changed, header moved"
-        );
-    }
-}
-
-#[test]
-fn a_blank_row_separates_the_navigation_from_the_query_line() {
-    let (_sb, _ctx, mut app) = setup();
-    for width in [50, 100] {
-        let text = screen(&render(&mut app, width, 24));
-        let rows: Vec<&str> = text.lines().collect();
-        let query = rows
-            .iter()
-            .position(|r| r.starts_with('>'))
-            .expect("query line");
-        assert!(
-            rows[query - 1].trim().is_empty(),
-            "width {width}: no blank row above the query:\n{text}"
-        );
-        assert!(
-            !rows[query - 2].trim().is_empty(),
-            "width {width}: the navigation is right above the gap"
-        );
+        assert_eq!(snapshot(&mut app), baseline, "width {width}: Ctrl+A");
     }
 }
 
@@ -968,31 +971,25 @@ fn ctrl_q_without_marks_is_a_quiet_no_op() {
 }
 
 #[test]
-fn the_title_has_room_before_the_tabs_and_a_blank_row_above_the_shortcuts() {
+fn the_title_has_room_before_the_tabs_and_a_blank_row_above_the_content() {
     let (_sb, _ctx, mut app) = setup();
     for width in [50, 100] {
         let text = screen(&render(&mut app, width, 24));
         let rows: Vec<&str> = text.lines().collect();
 
-        let title = rows
-            .iter()
-            .position(|r| r.starts_with("flatdir"))
-            .expect("title row");
-        let name_end = "flatdir".len();
-        let tab = rows[title].find("Active").expect("Active tab");
+        let tab = rows[0].find("Active").expect("Active tab");
         assert!(
-            tab - name_end >= 4,
+            tab - "flatdir".len() >= 4,
             "width {width}: tabs sit too close to the title: {:?}",
-            rows[title]
+            rows[0]
         );
-
         assert!(
-            rows[title + 1].trim().is_empty(),
+            rows[1].trim().is_empty(),
             "width {width}: blank row under the title"
         );
         assert!(
-            rows[title + 2].starts_with("Enter"),
-            "width {width}: shortcuts follow the blank row"
+            rows[2].starts_with('>'),
+            "width {width}: the content follows the blank row"
         );
     }
 }

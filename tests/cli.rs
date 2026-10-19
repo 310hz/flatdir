@@ -21,9 +21,8 @@ fn warm_up(path: &Path) {
         .output();
 }
 
-/// Row (1-based) of the first list entry in the 100-column pty: title, blank row, two rows of
-/// shortcuts, a blank row and the query line come first.
-const FIRST_LIST_ROW: u16 = 7;
+/// Row (1-based) of the first list entry: the title, a blank row and the query line come first.
+const FIRST_LIST_ROW: u16 = 4;
 
 struct Sandbox {
     _guard: TempDir,
@@ -240,9 +239,7 @@ fn enter_prints_the_path_of_the_current_directory() {
         text.contains(sb.root.join("alpha").to_str().unwrap()),
         "{text}"
     );
-    for expected in ["Ctrl+A", "Ctrl+T", "Ctrl+R", "Ctrl+P"] {
-        assert!(text.contains(expected), "header lacks {expected}");
-    }
+    assert!(text.contains("Help"), "the title row points to the help");
 }
 
 #[test]
@@ -307,10 +304,7 @@ fn environment_filter_options_change_nothing() {
     ];
     let text = sb.run_in_pty(&[], &env, "alpha", "\x03");
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"], "{text}");
-    assert!(
-        text.contains("Ctrl+R"),
-        "the TUI still came up interactively"
-    );
+    assert!(text.contains("Help"), "the TUI still came up interactively");
 }
 
 /// Reproduces the 2026-10-18 incident: no terminal, `--filter=` in the environment.

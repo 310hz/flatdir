@@ -6,7 +6,7 @@
 
 | キー | 動作 |
 |---|---|
-| 文字入力 | ファジー絞り込み(nucleo-matcher)。`Ctrl+U` で消去 |
+| 文字入力 | ファジー絞り込み(nucleo-matcher)。`Ctrl+U` で消去。`?` はヘルプに取られるので入力できない |
 | `Enter` | 現在行のパスを出力して終了(Active ならプロジェクト、Archived ならアーカイブ先) |
 | `Tab` / `Shift+Tab` | 現在行にマークを付け外しして下/上へ |
 | `Ctrl+Q` | すべてのマークを解除(カーソルや一覧はそのまま。マークが無ければ何もしない) |
@@ -18,6 +18,7 @@
 | 左クリック | 一覧の行の上: カーソルをその行へ |
 | 右クリック | 一覧の行の上: その行のマークを付け外し(Tab と同じだが、カーソルは動かさない) |
 | マウスホイール | 一覧の上: カーソル移動(1行/ノッチ)。プレビューの上: プレビューをスクロール(3行/ノッチ)。それ以外の場所は何もしない |
+| `?` | ヘルプ(ショートカット一覧)を手前に開く。開いている間は `?` / `Esc` で閉じ、`Ctrl+C` で終了。それ以外のキー・マウス・貼り付けは捨てる |
 | `Esc` / `Ctrl+C` | 終了 |
 
 Ctrl+R(ゴミ箱)と Ctrl+T(アーカイブ/復元)は、どちらもモード無しの 1 キー操作。当初「Ctrl+R で実行、Ctrl+T で Archive⇄Remove のモード切替」と解釈して実装したが、ユーザーの意図と違ったため改めた。色は使わない(エラー行の赤とマークの色のみ)。
@@ -63,16 +64,16 @@ ratatui と端末で文字幅の解釈が割れると、その行の残りがず
 - crossterm は押していないボタンの移動イベントまで要求するので、`on_mouse` は再描画が必要なときだけ true を返す。移動のたびに再描画しない。
 - プレビューのスクロール量は描画時に折り返し後の行数で上限を掛ける(`Paragraph::line_count`、ratatui の `unstable-rendered-line-info` 機能)。別のエントリやモードに変わると 0 に戻る。
 
-## ヘッダの固定レイアウト
+## タイトル行とヘルプ
 
-モードが変わるたびにヘッダの項目が動いたり行数が変わったりすると、下の内容が上下してしまう。
+ショートカットの説明は、以前は画面上部に常時並べていたが、項目が増えて数行を占めるようになったため、`?` で開くヘルプウィンドウに移した(ユーザー指示)。キーを `?` にしたのは、ヘルプキーとして定番で、ディレクトリ名に `?` が入ることはまず無いから。`Ctrl+H` も候補だったが、端末によっては Backspace と同じ 0x08 を送るため採らなかった。
 
-- フッターの説明は Title Case の動詞句に揃える(macOS のメニュー項目の慣例。例: `Move to Trash`、`Open in Finder`。Linux では `Open in File Manager`)。例外は `Enter` の `cd`(コマンド名なので小文字のまま)。
-- モードで変わる文言(`Ctrl+T` の `Archive`/`Restore`、プレビュー名 `Markdown`/`Tree`)は、最も長い候補の幅まで空白で埋める(`pad_to_longest`)。件数と「N marked」も固定幅で確保する。その結果、折り返しの行数と各キーの桁がモードによらず一定になる。
-- 縦の並びは「タイトル行 / 空き行 / ショートカット(1〜数行)/ 空き行 / クエリ行 / 一覧」。プログラム名とタブの間は `TITLE_GAP`(4 桁)空ける。
-- 実端末テスト(`tests/cli.rs`)のマウス座標は `FIRST_LIST_ROW` 1 か所に集約している。ヘッダの行数を変えたらこの定数を直す。
-- 回帰テスト: `the_header_keeps_its_layout_when_the_mode_changes`(幅 50〜140 で、モード切替・マーク・両方切替の前後で各キーの位置とリスト開始行が同じ)、`a_blank_row_separates_the_navigation_from_the_query_line`。文言を足すときは、取りうる候補を `pad_to_longest` に全部渡すこと。
-
+- 縦の並びは「タイトル行 / 空き行 / クエリ行 / 一覧 / ステータス行」。タイトル行は左に `flatdir` と Active / Archived のタブ・件数、右端に `? Help`。プログラム名とタブの間は `TITLE_GAP`(4 桁)空ける。
+- 件数と「N marked」は固定幅で確保し、モードやマークでタイトル行の項目が動かないようにする。
+- ヘルプは画面中央に重ねる枠(`Clear` で下を消してから描く)。開いている間は、隠れた一覧への操作(特に Ctrl+R / Ctrl+T)が誤って走らないよう、閉じる・終了以外の入力をすべて捨てる。
+- ヘルプの説明は Title Case の動詞句に揃える(macOS のメニュー項目の慣例。例: `Move to Trash`、`Open in Finder`。Linux では `Open in File Manager`)。例外は `Enter` の `cd`(コマンド名なので小文字のまま)。`Ctrl+T` だけは今の一覧でする動作(`Archive`/`Restore`)を出す。
+- 実端末テスト(`tests/cli.rs`)のマウス座標は `FIRST_LIST_ROW` 1 か所に集約している。タイトル周りの行数を変えたらこの定数を直す。
+- 回帰テスト: `the_title_keeps_its_layout_when_the_mode_changes`、`the_title_has_room_before_the_tabs_and_a_blank_row_above_the_content`、`help_takes_the_keys_until_it_is_closed`。
 ## Enter で cd する仕組み
 
 プログラムは親シェルのカレントディレクトリを変えられないので、`flatdir` は選んだパスを stdout に出すだけ。シェル関数(`src/shell.rs` の `SHELL_FUNCTION`、`flatdir shell` で出力)が出力を `$(...)` で受け取って `cd` する。

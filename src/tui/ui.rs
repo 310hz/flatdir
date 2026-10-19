@@ -7,7 +7,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
 
 use super::app::{App, ListKind, Panes};
@@ -28,14 +28,9 @@ pub struct PreviewCache {
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
-    // Shortcuts are laid out item by item, so a narrow terminal gets more rows instead of a split item.
-    let (title, hints) = header_lines(app, frame.area().width as usize);
-    // Never let the header take more than half of the screen, so the list always stays visible.
-    let max_header = (frame.area().height as usize / 2).max(2);
-    // Title row, a blank row, then the shortcuts.
-    let header_height = (2 + hints.len()).min(max_header) as u16;
-    let [header, _spacer, query, body, status] = Layout::vertical([
-        Constraint::Length(header_height),
+    // Title row, a blank row, then the content. The shortcuts live in the help window.
+    let [title, _spacer, query, body, status] = Layout::vertical([
+        Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(1),
@@ -43,9 +38,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
     ])
     .areas(frame.area());
 
-    let mut lines = vec![title, Line::default()];
-    lines.extend(hints);
-    frame.render_widget(Paragraph::new(lines), header);
+    draw_title(frame, app, title);
     draw_query(frame, app, query);
 
     if body.width >= MIN_WIDTH_FOR_PREVIEW {
@@ -66,6 +59,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
         draw_list(frame, app, body);
     }
     draw_status(frame, app, status);
+    if app.help {
+        draw_help(frame, app);
+    }
 }
 
 fn dim() -> Style {
@@ -84,7 +80,7 @@ pub fn toggle_label(kind: ListKind) -> &'static str {
     }
 }
 
-fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) {
+fn draw_title(frame: &mut Frame, app: &App, area: Rect) {
     let tab = |label: &'static str, active: bool| {
         let style = if active {
             Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD)
@@ -93,14 +89,13 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
         };
         Span::styled(format!(" {label} "), style)
     };
-    // Everything that changes with the mode or the data is padded to its widest variant, so the
-    // header never moves and never changes its number of rows (which would shift the content below).
+    // The count and "N marked" are padded, so the title never shifts as they change.
     let marked = if app.marks.is_empty() {
         String::new()
     } else {
         format!("{} marked", app.marks.len())
     };
-    let title = vec![
+    let title = Line::from(vec![
         Span::styled("flatdir", bold()),
         Span::raw(TITLE_GAP),
         tab("Active", app.kind == ListKind::Active),
@@ -114,34 +109,21 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
             format!("  {marked:<COUNT_WIDTH$}"),
             Style::default().fg(MARK_COLOR).add_modifier(Modifier::BOLD),
         ),
-    ];
-
-    let preview_name = match app.preview_mode {
-        PreviewMode::Markdown => "Markdown",
-        PreviewMode::Tree => "Tree",
-    };
-    let toggle = pad_to_longest(toggle_label(app.kind), &["Archive", "Restore"]);
-    let preview_name = pad_to_longest(preview_name, &["Markdown", "Tree"]);
-    let item = |key: &'static str, label: String| {
-        vec![
-            Span::styled(key, bold()),
-            Span::styled(format!(" {label}"), dim()),
-        ]
-    };
-    let items = vec![
-        item("Enter", "cd".into()),
-        item("Tab", "Mark".into()),
-        item("Ctrl+Q", "Clear Marks".into()),
-        item("Ctrl+A", "Toggle Active/Archived".into()),
-        item("Ctrl+T", toggle),
-        item("Ctrl+R", "Move to Trash".into()),
-        item("Ctrl+O", OPEN_LABEL.into()),
-        item("Ctrl+P", format!("Preview: {preview_name}")),
-        item("Esc", "Quit".into()),
-    ];
-
-    (Line::from(title), flow(items, width))
+    ]);
+    let help = Line::from(vec![
+        Span::styled("?", bold()),
+        Span::styled(" Help", dim()),
+    ])
+    .right_aligned();
+    frame.render_widget(Paragraph::new(title), area);
+    frame.render_widget(Paragraph::new(help), area);
 }
+
+/// Space between the program name and the Active / Archived tabs.
+const TITLE_GAP: &str = "    ";
+
+/// Room reserved for "NNN marked".
+const COUNT_WIDTH: usize = 10;
 
 /// Names the app `Opener` actually launches (`open` on macOS, `xdg-open` elsewhere).
 const OPEN_LABEL: &str = if cfg!(target_os = "macos") {
@@ -150,42 +132,58 @@ const OPEN_LABEL: &str = if cfg!(target_os = "macos") {
     "Open in File Manager"
 };
 
-/// Space between the program name and the Active / Archived tabs.
-const TITLE_GAP: &str = "    ";
-
-/// Room reserved for "NNN marked".
-const COUNT_WIDTH: usize = 10;
-
-/// Pads `label` with spaces to the width of the longest of `variants`.
-fn pad_to_longest(label: &str, variants: &[&str]) -> String {
-    let longest = variants.iter().map(|v| v.width()).max().unwrap_or(0);
-    let pad = longest.saturating_sub(label.width());
-    format!("{label}{}", " ".repeat(pad))
+fn help_items(kind: ListKind) -> [(&'static str, &'static str); 10] {
+    [
+        ("Enter", "cd"),
+        ("Tab / Shift+Tab", "Mark"),
+        ("Ctrl+Q", "Clear Marks"),
+        ("Ctrl+A", "Toggle Window Active/Archived"),
+        ("Ctrl+T", toggle_label(kind)),
+        ("Ctrl+R", "Move to Trash"),
+        ("Ctrl+O", OPEN_LABEL),
+        ("Ctrl+P", "Toggle Preview"),
+        ("Ctrl+U", "Clear Query"),
+        ("Esc", "Quit"),
+    ]
 }
 
-/// Packs items into rows no wider than `width`, breaking only between items.
-fn flow(items: Vec<Vec<Span<'static>>>, width: usize) -> Vec<Line<'static>> {
-    const GAP: &str = "   ";
-    let mut rows: Vec<Line<'static>> = Vec::new();
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    let mut used = 0;
-    for item in items {
-        let item_width: usize = item.iter().map(|s| s.content.width()).sum();
-        if used > 0 && used + GAP.len() + item_width > width {
-            rows.push(Line::from(std::mem::take(&mut spans)));
-            used = 0;
-        }
-        if used > 0 {
-            spans.push(Span::raw(GAP));
-            used += GAP.len();
-        }
-        spans.extend(item);
-        used += item_width;
-    }
-    if !spans.is_empty() {
-        rows.push(Line::from(spans));
-    }
-    rows
+/// The shortcut list, centered on top of the screen.
+fn draw_help(frame: &mut Frame, app: &App) {
+    const GAP: usize = 3;
+    let items = help_items(app.kind);
+    let key_width = items.iter().map(|(k, _)| k.width()).max().unwrap_or(0);
+    let lines: Vec<Line> = items
+        .iter()
+        .map(|(key, label)| {
+            Line::from(vec![
+                Span::styled(format!("{key:<key_width$}"), bold()),
+                Span::raw(" ".repeat(GAP)),
+                Span::raw(*label),
+            ])
+        })
+        .collect();
+    let content_width = lines.iter().map(Line::width).max().unwrap_or(0);
+
+    let block = Block::bordered()
+        .border_style(dim())
+        .padding(Padding::new(2, 2, 1, 1))
+        .title(Span::styled(" Help ", bold()))
+        .title_bottom(Line::from(vec![
+            Span::styled(" ? / Esc", bold()),
+            Span::styled(" Close ", dim()),
+        ]));
+    let screen = frame.area();
+    // Borders (2) and padding (2 + 2 across, 1 + 1 down) around the text.
+    let width = ((content_width + 6) as u16).min(screen.width);
+    let height = ((lines.len() + 4) as u16).min(screen.height);
+    let area = Rect::new(
+        screen.x + (screen.width - width) / 2,
+        screen.y + (screen.height - height) / 2,
+        width,
+        height,
+    );
+    frame.render_widget(Clear, area);
+    frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn draw_query(frame: &mut Frame, app: &App, area: Rect) {

@@ -29,7 +29,7 @@ flatdir root --unset         # unset it
 
 | Key | Action |
 |---|---|
-| type | fuzzy filter |
+| type | fuzzy filter (`?` is taken by the help, so it cannot be typed) |
 | `Up` / `Down`, `PageUp` / `PageDown` | move |
 | `Enter` | print the path of the current directory (the shell function below `cd`s to it) |
 | `Tab` / `Shift+Tab` | mark the current entry and move down / up |
@@ -43,11 +43,12 @@ flatdir root --unset         # unset it
 | mouse wheel | over the list: move the cursor; over the preview: scroll it |
 | left click | on a list row: move the cursor there |
 | right click | on a list row: mark / unmark it (like `Tab`, but the cursor does not move) |
+| `?` | show / hide the list of shortcuts (`Esc` also closes it) |
 | `Esc` / `Ctrl+C` | quit |
 
 While the TUI is open the terminal reports the mouse to flatdir, so selecting text with the mouse needs `Shift` (or `Option` in some terminals) held down.
 
-The shortcuts are always shown at the top, and the `Ctrl+T` label says what it will do in the current list.
+The title row only points to the help (`? Help`); the help window lists the shortcuts, and its `Ctrl+T` label says what it will do in the current list.
 
 `flatdir` only prints the path (a program cannot change its parent shell's directory). To `cd` into the selection, load a small shell function (bash and zsh):
 
