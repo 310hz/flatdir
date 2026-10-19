@@ -49,7 +49,13 @@ While the TUI is open the terminal reports the mouse to flatdir, so selecting te
 
 The shortcuts are always shown at the top, and the `Ctrl+T` label says what it will do in the current list.
 
-`flatdir` only prints a path. To `cd` into the selection, wrap it in a shell function (zsh/bash):
+`flatdir` only prints the path (a program cannot change its parent shell's directory). To `cd` into the selection, load a small shell function (bash and zsh):
+
+```sh
+eval "$(flatdir shell)"   # put this in .zshrc / .bashrc
+```
+
+It is this function; you can also paste it into your config instead of using `eval`:
 
 ```sh
 flatdir() {

@@ -87,6 +87,12 @@ impl Sandbox {
             .unwrap()
     }
 
+    /// Puts the binary on PATH under its real name, the way an installed copy would be found.
+    fn link_binary(&self) {
+        let link = self.tmp.join("bin/flatdir");
+        std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_flatdir"), link).unwrap();
+    }
+
     fn track(&self) {
         let out = self.run(&["root", self.root.to_str().unwrap()]);
         assert!(
@@ -119,6 +125,24 @@ impl Sandbox {
         wait_for: &str,
         keys: &str,
     ) -> String {
+        self.run_program_in_pty(
+            env!("CARGO_BIN_EXE_flatdir"),
+            args,
+            extra_env,
+            wait_for,
+            keys,
+        )
+    }
+
+    /// Same, for any program (used to run a real shell that has the flatdir function loaded).
+    fn run_program_in_pty(
+        &self,
+        program: &str,
+        args: &[&str],
+        extra_env: &[(&str, &str)],
+        wait_for: &str,
+        keys: &str,
+    ) -> String {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 30,
@@ -127,7 +151,7 @@ impl Sandbox {
                 pixel_height: 0,
             })
             .unwrap();
-        let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_flatdir"));
+        let mut cmd = CommandBuilder::new(program);
         cmd.args(args);
         cmd.env_clear();
         cmd.env("HOME", &self.home);
@@ -498,4 +522,78 @@ fn the_old_track_commands_are_gone() {
 
 fn stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// The whole point of the shell function: pressing Enter must change the shell's directory.
+/// Runs a real shell in a pty, loads the function from `flatdir shell`, and checks `pwd` afterwards.
+fn assert_enter_changes_directory_in(shell: &str) {
+    if !Path::new(shell).exists() {
+        eprintln!("skipping: {shell} is not installed");
+        return;
+    }
+    let sb = Sandbox::new();
+    sb.track();
+    sb.link_binary();
+    let script = r#"eval "$(flatdir shell)"; flatdir; echo "PWD=$(pwd)""#;
+    let text = sb.run_program_in_pty(shell, &["-c", script], &[], "alpha", "\r");
+    let alpha = sb.root.join("alpha");
+    assert!(
+        text.contains(&format!("PWD={}", alpha.display())),
+        "{shell}: the shell did not cd into {}:\n{text}",
+        alpha.display()
+    );
+}
+
+#[test]
+fn enter_changes_the_directory_in_zsh() {
+    assert_enter_changes_directory_in("/bin/zsh");
+}
+
+#[test]
+fn enter_changes_the_directory_in_bash() {
+    assert_enter_changes_directory_in("/bin/bash");
+}
+
+#[test]
+fn the_shell_function_is_printed_and_documented_verbatim() {
+    let sb = Sandbox::new();
+    let out = sb.run(&["shell"]);
+    assert!(out.status.success());
+    let printed = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(printed, flatdir::shell::SHELL_FUNCTION);
+    assert!(
+        printed.contains("command flatdir"),
+        "must call the binary, not itself"
+    );
+
+    let readme = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md")).unwrap();
+    assert!(
+        readme.contains(flatdir::shell::SHELL_FUNCTION),
+        "README must show the exact function"
+    );
+}
+
+/// Without the shell function the path is only printed; say so, but only when it would be seen.
+#[test]
+fn a_hint_explains_why_nothing_changed_unless_the_output_is_captured() {
+    let sb = Sandbox::new();
+    sb.track();
+
+    let shown = sb.run_in_pty(&[], &[], "alpha", "\r");
+    assert!(
+        shown.contains("flatdir shell"),
+        "stdout is the terminal: explain how to enable cd\n{shown}"
+    );
+
+    let file = sb.tmp.join("captured.txt");
+    let script = format!("'{}' > '{}'", env!("CARGO_BIN_EXE_flatdir"), file.display());
+    let captured = sb.run_program_in_pty("/bin/sh", &["-c", &script], &[], "alpha", "\r");
+    assert!(
+        !captured.contains("flatdir shell"),
+        "captured like the shell function does: no hint\n{captured}"
+    );
+    assert_eq!(
+        fs::read_to_string(&file).unwrap().trim(),
+        sb.root.join("alpha").to_str().unwrap()
+    );
 }

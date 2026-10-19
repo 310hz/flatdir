@@ -22,4 +22,4 @@
 - テスト(`tests/cli.rs`)の注意: macOS は新しく作った実行ファイルの初回起動を検査して数百ミリ秒遅れる。偽の `zoxide`/`open` を書いた直後に `warm_up` で 1 回実行してから使うこと(並列実行で zoxide の並び替えテストが落ちる原因だった)。
 - プレビューは同期生成のため、巨大ディレクトリで描画が詰まる可能性がある(別スレッド化は未実施)。
 - `clone -s` だけ skim(ピッカー)に依存している。自前 TUI のリスト部品を汎用化すれば skim は外せる。
-- dotfiles の `modules/flatdir.sh` は旧 `-a` を前提にしている。組み込み時に直す。
+- Enter で `cd` するにはシェル関数が必要(プログラムは親シェルのディレクトリを変えられない)。`flatdir shell` が関数を出力し、`eval "$(flatdir shell)"` で入る。dotfiles の `modules/flatdir.sh` には同じ関数を直接書いてある(文面は `src/shell.rs` の `SHELL_FUNCTION` と同一。変えたら両方直す)。関数が無いまま Enter を押すと、案内を stderr に出す。

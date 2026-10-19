@@ -8,4 +8,5 @@ pub mod ops;
 pub mod paths;
 pub mod select;
 pub mod services;
+pub mod shell;
 pub mod tui;

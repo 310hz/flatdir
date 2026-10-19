@@ -71,3 +71,11 @@ ratatui と端末で文字幅の解釈が割れると、その行の残りがず
 - 縦の並びは「タイトル行 / 空き行 / ショートカット(1〜数行)/ 空き行 / クエリ行 / 一覧」。プログラム名とタブの間は `TITLE_GAP`(4 桁)空ける。
 - 実端末テスト(`tests/cli.rs`)のマウス座標は `FIRST_LIST_ROW` 1 か所に集約している。ヘッダの行数を変えたらこの定数を直す。
 - 回帰テスト: `the_header_keeps_its_layout_when_the_mode_changes`(幅 50〜140 で、モード切替・マーク・両方切替の前後で各キーの位置とリスト開始行が同じ)、`a_blank_row_separates_the_navigation_from_the_query_line`。文言を足すときは、取りうる候補を `pad_to_longest` に全部渡すこと。
+
+## Enter で cd する仕組み
+
+プログラムは親シェルのカレントディレクトリを変えられないので、`flatdir` は選んだパスを stdout に出すだけ。シェル関数(`src/shell.rs` の `SHELL_FUNCTION`、`flatdir shell` で出力)が出力を `$(...)` で受け取って `cd` する。
+
+- 関数が無いと「パスが表示されるだけ」になる。以前、dotfiles 側の関数をコメントアウトしたまま気づかず、`cd` が動かない状態が続いた。
+- 再発防止: stdout が端末のとき(= 関数に受け取られていない)は、案内を stderr に出す。関数経由なら stdout はパイプなので出ない。
+- 検証: `tests/cli.rs` の `enter_changes_the_directory_in_zsh` / `_in_bash` が、実際のシェルを pty で動かして `cd` を確かめる。README の関数と `flatdir shell` の出力が同一であることもテストしている。

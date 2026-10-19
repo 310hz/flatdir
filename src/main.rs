@@ -34,6 +34,8 @@ enum Command {
     },
     /// Show the managed root, directory counts and required commands
     Status,
+    /// Print the shell function that makes Enter cd (use: eval "$(flatdir shell)")
+    Shell,
     /// Create a new directory under the root
     Init {
         name: String,
@@ -93,6 +95,7 @@ fn run(cli: Cli) -> Result<()> {
             let ctx = context()?;
             println!("{}", ctx.root()?.display());
         }
+        Some(Command::Shell) => print!("{}", flatdir::shell::SHELL_FUNCTION),
         Some(Command::Status) => println!("{}", cmd::status(&context()?)),
         Some(Command::Init { name, git }) => {
             let dest = cmd::init(&context()?, &name, git)?;
@@ -113,6 +116,10 @@ fn run(cli: Cli) -> Result<()> {
 fn print_path(path: Option<PathBuf>) {
     if let Some(p) = path {
         println!("{}", p.display());
+        // Captured by the shell function, stdout is a pipe. A terminal means nothing will cd.
+        if std::io::stdout().is_terminal() {
+            eprintln!("{}", flatdir::shell::MISSING_FUNCTION_HINT);
+        }
     }
 }
 
