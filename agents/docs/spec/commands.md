@@ -1,25 +1,36 @@
 # コマンド仕様
 
-出力契約: 選択結果のパスだけを stdout に出す。メッセージは全て stderr。TUI は stderr に描画する(stdout はシェル関数が `$(...)` で受け取る)。シェル関数は引数なしのときだけ `cd` する。
+出力の約束: stdout に出すのはパスだけ(シェル関数が `$(...)` で受け取る)。メッセージはすべて stderr。TUI も stderr に描画する。
 
 | コマンド | 挙動・副作用 |
 |---|---|
-| (なし) | TUI を開く。Enter で現在行のパスを出力して終了。対話端末が必要 |
-| `root [<path>] [--unset \| --cd]` | 引数なし: 管理 root を stdout に出す(未設定ならエラー)。`--cd`: 同じく出力し、シェル関数がそこへ `cd` する(関数が無く stdout が端末なら案内を stderr に出す)。`<path>`: 管理 root を設定(HOME 配下のみ)。設定済みでも入れ替わる。`--unset`: 解除。設定ファイルのみ変更。旧 root のアーカイブは各パスの下に残り、その root に戻すとまた見える |
-| `status` | 管理 root・直下のディレクトリ数・アーカイブ先と件数・設定パス・任意コマンドの有無を表示(stdout)。読み取りのみで、root 未設定や読めない場合も報告して正常終了 |
+| (なし) | TUI を開く([spec/tui.md](tui.md))。対話端末が必要 |
+| `root` | 管理 root を stdout に出す(未設定ならエラー) |
+| `root --cd` | 同じく出力し、シェル関数がそこへ `cd` する。関数が無く stdout が端末なら、案内を stderr に出す |
+| `root <path>` | 管理 root を設定する(HOME 配下の既存ディレクトリのみ)。設定済みでも入れ替わる。変わるのは設定ファイルだけ |
+| `root --unset` | 設定を解除する。旧 root のアーカイブは残り、その root に戻すとまた見える |
+| `status` | 管理 root、直下のディレクトリ数、アーカイブ先と件数、設定ファイルのパス、任意コマンドの有無を stdout に出す。読み取りのみで、root が未設定・読めない場合も報告して正常終了 |
+| `shell [zsh\|bash]` | シェル関数を出力する(どちらも同じ文面)。`--help` の一覧には出さない |
 
-旧版の `-a`・`archive`・`restore`・`remove`・`list` は廃止した(TUI に統合、または管理 root が 1 つのため不要)。`init`・`clone` も TUI の New ビュー(`Ctrl+N`)に統合して廃止した。
-
-## TUI
-
-[concepts/tui.md](../concepts/tui.md) を参照。
+シェル関数が `cd` するのは、引数なし(TUI)と `root --cd` のときだけ。他の出力はそのまま表示する。
 
 ## パスと設定
 
-- 設定: `$XDG_CONFIG_HOME/flatdir/config.toml`(既定 `~/.config/flatdir/`)。`root`(文字列)、`sound`(真偽、既定 false。macOS でゴミ箱の効果音)。旧版の `fzf_opts` や、廃止した `color`(`clone -s` のピッカーの配色)など未知のキーは無視する。
-- アーカイブ: `$XDG_DATA_HOME/flatdir/archive/<root の HOME 相対パス>/<name>`(既定 `~/.local/share/flatdir/archive/`)。root 直下と同じ階層名を保つので、目印ファイルは不要。旧版の `.flatdir_archived` が残っていても一覧に出て、復元時に取り除く。
-- 一覧から除外: 隠しディレクトリ、シンボリックリンク、名前に TAB/改行を含むもの。
+- 設定: `$XDG_CONFIG_HOME/flatdir/config.toml`(既定 `~/.config/flatdir/`)。キーは `root`(文字列)と `sound`(真偽、既定 false。macOS で `Ctrl+R` のときにゴミ箱の効果音)。未知のキーは無視する。
+- アーカイブ: `$XDG_DATA_HOME/flatdir/archive/<root の HOME 相対パス>/<name>`(既定 `~/.local/share/flatdir/archive/`)。この直下全体がアーカイブで、目印ファイルは使わない。旧版の目印 `.flatdir_archived` は復元時に取り除く。
+- 一覧に出さないもの: 隠しディレクトリ、シンボリックリンク、ファイル、名前に TAB / 改行を含むもの。
 
 ## 外部コマンド
 
-必須は無い(ゴミ箱は `trash` crate、README は `pulldown-cmark` で自前描画、ツリーは `ignore` crate)。任意: `zoxide`(無ければ並び順が名前順)、`git`(clone と Git (private))、`gh`(private リポジトリの作成と GitHub 検索)、`curl`(Hugging Face 検索)、`git-lfs`(HF clone の大きいファイル)。ssh 鍵や GitHub 認証がユーザー環境に依存するので、git/gh は外部のまま使う。HTTP クライアントの crate を足さず curl にしたのは、HF 検索だけのためにビルドと依存を重くしないため。
+必須のものは無い(ゴミ箱は `trash` crate、README 表示は `pulldown-cmark`、ツリーは `ignore` crate)。次は任意機能のためだけに使う。
+
+| コマンド | 使う機能 | 無いとき |
+|---|---|---|
+| `zoxide` | 一覧の並び(frecency 順) | 名前順 |
+| `git` | New ビューの clone と Git (private) | その操作がエラー |
+| `gh` | Git (private)、GitHub の検索 | 同上 |
+| `curl` | Hugging Face の検索 | 同上 |
+| `git-lfs` | Hugging Face の clone で LFS ファイルを落とすとき | ポインタのまま |
+| `open` / `xdg-open` | `Ctrl+O` | エラー |
+
+git・gh は、ssh 鍵や GitHub の認証がユーザー環境に依存するので外部コマンドのまま使う。

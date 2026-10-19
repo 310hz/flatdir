@@ -28,29 +28,30 @@
 | 項目 | 旧(shell) | 新(Rust) |
 |---|---|---|
 | 管理 root | 複数 | **1 つだけ**(`flatdir root`) |
-| 選択・移動・整理 | fzf と、`-a` `remove` `archive` `restore` の別コマンド | **1 つの TUI** に統合([tui.md](tui.md)) |
+| 選択・移動・整理 | fzf と、`-a` `remove` `archive` `restore` の別コマンド | **1 つの TUI** に統合([spec/tui.md](../spec/tui.md)) |
+| 作成・clone | `init [--git]`、`clone [-s]`(同名は確認して上書き) | TUI の **New ビュー**に統合。Hugging Face の clone と検索を追加。**上書きはしない** |
 | アーカイブの置き場 | `~/.local/share/flatdir/archive/<HOME 相対パス>/<name>` | **同じ**(既存のアーカイブがそのまま使える) |
 | アーカイブの目印 | 各ディレクトリの `.flatdir_archived` | **廃止**。root に対応する置き場の直下全体がアーカイブ。旧目印が残っていても一覧に出て、復元時に削除する |
-| 設定 | `src/flatdir/config`(`DIRS="a:b"`、リポジトリ内) | `~/.config/flatdir/config.toml`(`root`、`sound`、`color`)。**旧設定は読まない** |
-| 外部コマンド | fzf、trash、rich、eza | 必須は無し(`trash` crate、自前 TUI、自前 Markdown 描画)。`zoxide`・`gh`・`git` は任意機能 |
+| 設定 | `src/flatdir/config`(`DIRS="a:b"`、リポジトリ内) | `~/.config/flatdir/config.toml`(`root`、`sound`)。**旧設定は読まない** |
+| 外部コマンド | fzf、trash、rich、eza | 必須は無し(`trash` crate、自前 TUI、自前 Markdown 描画)。`zoxide`・`git`・`gh`・`curl`・`git-lfs` は任意機能 |
 | 並び順 | zoxide のスコア降順 | 同じ(起動を待たせないよう非同期で適用) |
 | 表示名 | root 1 つなら root 相対 | 同じ |
 | アーカイブ時の掃除 | `node_modules` 等を 1 件ずつ確認して削除 | **廃止**。残っているものを報告するだけで、自動削除はしない |
-| `cd` | `modules/flatdir.sh` の関数 | `flatdir shell` が出す関数([tui.md](tui.md) の「Enter で cd する仕組み」) |
+| `cd` | `modules/flatdir.sh` の関数 | `flatdir shell` が出す関数([tui.md](tui.md) の「Enter で cd する仕組み」)。`root --cd` でも `cd` する |
 
 ## 4. 判断の記録(却下した案を含む)
 
 - **sh のまま安全策を足す案**(TTY 必須、全件拒否、確認): 提案したが、ユーザーが「1 つのパッケージにしたい」ため Rust になった。安全策は Rust 版に取り込んだ。
 - **毎回の確認プロンプト**: ユーザー体験が下がるとして却下。代わりに、対話端末必須・全件選択の拒否・環境変数に影響されない設計で守る。
 - **Python / Go**: 候補に挙げたが、Rust を選んだ(CLI/TUI ライブラリが成熟、単一バイナリ、`cargo install --git` で配布できる)。
-- **skim で TUI を作る案**: 行ごとの色、複数アクション、ヘッダの固定レイアウトが足りず、ratatui で自前の TUI にした。skim は `clone -s` の検索ピッカーにだけ残っている(外せる: 自前のリスト部品を汎用化する)。
-- **Ctrl+T で Archive ⇄ Remove のモード切替**(最初の解釈): ユーザーの意図と違い撤回。今は Ctrl+R=ゴミ箱、Ctrl+A=アーカイブ状態の反転(当時は Ctrl+T。のちに一覧の切り替えと入れ替えた)で、モードは無い。
+- **skim で TUI を作る案**: 行ごとの色、複数アクション、ヘッダの固定レイアウトが足りず、ratatui で自前の TUI にした。`clone -s` のピッカーにだけ残していた skim も、clone を TUI に統合したときに外した。
+- **アーカイブと削除をモードで切り替える案**: ユーザーの意図と違い撤回。アーカイブ/復元(`Ctrl+A`)と削除(`Ctrl+R`)は、それぞれ 1 キーの操作。
 - **色**: ユーザーの端末はライトモード。ダークモードとも共通で読めるよう、端末のパレット(ANSI 0〜15)と反転・太字だけを使う。
 
 ## 5. 旧版と挙動を比べたいとき
 
 - 旧ソースは **読むだけ**にする。旧版の `remove` / `restore` / `archive` は、非対話の fzf と組み合わさると全件に作用する(事故の原因)。実環境で実行しない。
-- 比較の目安は、[spec/commands.md](../spec/commands.md) と、旧版の `lib/*.sh`。旧版の README(`agents/refs/flatdir-sh/README.md`、または履歴の `src/flatdir/README.md`)も参考になる。
+- 比較の目安は、[spec/commands.md](../spec/commands.md)・[spec/tui.md](../spec/tui.md) と、旧版の `lib/*.sh`。旧版の README(`agents/refs/flatdir-sh/README.md`、または履歴の `src/flatdir/README.md`)も参考になる。
 
 ## 6. 独立後の運用メモ
 

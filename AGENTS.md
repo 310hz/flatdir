@@ -18,7 +18,7 @@ TUI の削除・アーカイブ・復元・作成(New ビューの Directory / G
 - 色は端末のパレット(ANSI 0〜15)と反転・太字・薄字だけで組む。ユーザーの端末はライトモードで、ダークモードとも共通で読めることが条件。256 色や RGB を足さない(`only_terminal_palette_colors_are_ever_used` と `the_screen_uses_only_palette_colors` が検査する)。
 - 起動速度は最優先(最初のフレームまで数 ms)。起動経路にサブプロセスや重い読み込みを足さない([concepts/tui.md](agents/docs/concepts/tui.md))。
 - 外部コマンドに依存しない方針。必須コマンドは無く、`zoxide`・`gh`・`git`・`curl`・`git-lfs` は任意機能のためだけに使う。
-- 公開は `cargo install --git <URL>` 程度で、crates.io には出さない。
+- 配布は `cargo install --git https://github.com/310hz/flatdir` だけで、crates.io には出さない。
 
 ## 作業環境の注意
 

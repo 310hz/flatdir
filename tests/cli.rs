@@ -599,7 +599,7 @@ fn root_cd_without_the_function_prints_the_root_and_a_hint() {
 }
 
 #[test]
-fn the_shell_function_is_printed_and_documented_verbatim() {
+fn the_shell_function_is_printed_and_the_readme_loads_it() {
     let sb = Sandbox::new();
     let out = sb.run(&["shell"]);
     assert!(out.status.success());
@@ -632,8 +632,8 @@ fn the_shell_function_is_printed_and_documented_verbatim() {
 
     let readme = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md")).unwrap();
     assert!(
-        readme.contains(flatdir::shell::SHELL_FUNCTION),
-        "README must show the exact function"
+        readme.contains(r#"eval "$(flatdir shell)""#),
+        "README tells how to load the function"
     );
 }
 
