@@ -72,7 +72,7 @@ fn bold() -> Style {
     Style::default().add_modifier(Modifier::BOLD)
 }
 
-/// What Ctrl+T does in the current list.
+/// What Ctrl+A does in the current list.
 pub fn toggle_label(kind: ListKind) -> &'static str {
     match kind {
         ListKind::Active => "Archive",
@@ -137,8 +137,8 @@ fn help_items(kind: ListKind) -> [(&'static str, &'static str); 10] {
         ("Enter", "cd"),
         ("Tab / Shift+Tab", "Mark"),
         ("Ctrl+Q", "Clear Marks"),
-        ("Ctrl+A", "Toggle List: Active/Archived"),
-        ("Ctrl+T", toggle_label(kind)),
+        ("Ctrl+T", "Toggle List: Active/Archived"),
+        ("Ctrl+A", toggle_label(kind)),
         ("Ctrl+R", "Move to Trash"),
         ("Ctrl+O", OPEN_LABEL),
         ("Ctrl+P", "Toggle Preview: README/Tree"),

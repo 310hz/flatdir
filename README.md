@@ -34,8 +34,8 @@ flatdir root --unset         # unset it
 | `Enter` | print the path of the current directory (the shell function below `cd`s to it) |
 | `Tab` / `Shift+Tab` | mark the current entry and move down / up |
 | `Ctrl+Q` | clear all marks |
-| `Ctrl+A` | switch between the Active and Archived lists (marks are reset) |
-| `Ctrl+T` | toggle the archived state of the marked entries (or the current one): archive in the Active list, restore in the Archived list |
+| `Ctrl+T` | switch between the Active and Archived lists (marks are reset) |
+| `Ctrl+A` | toggle the archived state of the marked entries (or the current one): archive in the Active list, restore in the Archived list |
 | `Ctrl+R` | move the marked entries (or the current one) to the Trash |
 | `Ctrl+O` | open the current directory in the file manager (Finder on macOS, `xdg-open` elsewhere) |
 | `Ctrl+P` | switch the preview: README (Markdown) <-> file tree. Without a README the tree is shown |
@@ -48,7 +48,7 @@ flatdir root --unset         # unset it
 
 While the TUI is open the terminal reports the mouse to flatdir, so selecting text with the mouse needs `Shift` (or `Option` in some terminals) held down.
 
-The title row only points to the help (`? Help`); the help window lists the shortcuts, and its `Ctrl+T` label says what it will do in the current list.
+The title row only points to the help (`? Help`); the help window lists the shortcuts, and its `Ctrl+A` label says what it will do in the current list.
 
 `flatdir` only prints the path (a program cannot change its parent shell's directory). To `cd` into the selection, load a small shell function (bash and zsh):
 

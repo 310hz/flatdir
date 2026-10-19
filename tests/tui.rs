@@ -107,7 +107,7 @@ fn esc_and_ctrl_c_quit() {
 }
 
 #[test]
-fn tab_marks_and_moves_and_ctrl_a_resets_marks() {
+fn tab_marks_and_moves_and_ctrl_t_resets_marks() {
     let (sb, ctx, mut app) = setup();
     app.on_key(&ctx, key(KeyCode::Tab));
     app.on_key(&ctx, key(KeyCode::Tab));
@@ -123,7 +123,7 @@ fn tab_marks_and_moves_and_ctrl_a_resets_marks() {
         "Shift+Tab marks too and moves up"
     );
 
-    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('t'));
     assert_eq!(app.kind, ListKind::Archived);
     assert!(app.marks.is_empty(), "marks reset when the list changes");
 }
@@ -137,20 +137,20 @@ fn the_archive_is_read_only_when_first_needed() {
         ["alpha", "beta", "gamma"],
         "archive not read at startup"
     );
-    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('t'));
     assert_eq!(shown(&app), ["old"]);
     assert_eq!(
         app.on_key(&ctx, key(KeyCode::Enter)),
         Outcome::Cd(sb.archive_dir().join("old"))
     );
-    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('t'));
     assert_eq!(app.kind, ListKind::Active);
 }
 
 #[test]
-fn ctrl_t_archives_the_current_entry_when_nothing_is_marked() {
+fn ctrl_a_archives_the_current_entry_when_nothing_is_marked() {
     let (sb, ctx, mut app) = setup();
-    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('a'));
     assert_eq!(sb.names(&sb.archive_dir()), ["alpha"]);
     assert_eq!(shown(&app), ["beta", "gamma"], "the list is refreshed");
     assert!(
@@ -161,21 +161,21 @@ fn ctrl_t_archives_the_current_entry_when_nothing_is_marked() {
 }
 
 #[test]
-fn ctrl_t_archives_all_marked_entries() {
+fn ctrl_a_archives_all_marked_entries() {
     let (sb, ctx, mut app) = setup();
     app.on_key(&ctx, key(KeyCode::Tab));
     app.on_key(&ctx, key(KeyCode::Tab));
-    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('a'));
     assert_eq!(sb.names(&sb.archive_dir()), ["alpha", "beta"]);
     assert_eq!(shown(&app), ["gamma"]);
     assert!(app.marks.is_empty());
 }
 
 #[test]
-fn ctrl_t_reports_leftovers_instead_of_deleting_them() {
+fn ctrl_a_reports_leftovers_instead_of_deleting_them() {
     let (sb, ctx, mut app) = setup();
     fs::create_dir_all(sb.root.join("alpha/node_modules")).unwrap();
-    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('a'));
     assert!(sb.archive_dir().join("alpha/node_modules").is_dir());
     assert!(
         app.status
@@ -226,8 +226,8 @@ fn ctrl_r_moves_the_current_entry_to_the_trash_and_refreshes_the_list() {
     );
     assert!(!sb.archive_dir().exists(), "Ctrl+R never archives");
 
-    // The cursor stayed on the same row, which is now gamma; Ctrl+T then archives it.
-    app.on_key(&ctx, ctrl('t'));
+    // The cursor stayed on the same row, which is now gamma; Ctrl+A then archives it.
+    app.on_key(&ctx, ctrl('a'));
     assert!(sb.archive_dir().join("gamma").is_dir());
     assert_eq!(
         sb.names(&sb.trash_dir),
@@ -248,13 +248,13 @@ fn ctrl_r_trashes_every_marked_entry() {
 }
 
 #[test]
-fn in_the_archived_list_ctrl_t_restores_and_ctrl_r_trashes() {
+fn in_the_archived_list_ctrl_a_restores_and_ctrl_r_trashes() {
     let (sb, ctx, mut app) = setup();
     for d in ["old1", "old2", "old3"] {
         fs::create_dir_all(sb.archive_dir().join(d)).unwrap();
     }
-    app.on_key(&ctx, ctrl('a'));
     app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('a'));
     assert_eq!(
         sb.names(&sb.root),
         [".hidden", "alpha", "beta", "file.txt", "gamma", "old1"]
@@ -284,8 +284,8 @@ fn in_the_archived_list_ctrl_t_restores_and_ctrl_r_trashes() {
 #[test]
 fn pasted_text_is_data_and_never_triggers_commands() {
     let (sb, ctx, mut app) = setup();
-    // Ctrl+T (0x14, archive) and Ctrl+R (0x12, trash) inside a paste must not act as shortcuts.
-    app.on_paste("al\x14\x12pha\n");
+    // Ctrl+A (0x01, archive) and Ctrl+R (0x12, trash) inside a paste must not act as shortcuts.
+    app.on_paste("al\x01\x12pha\n");
     assert_eq!(app.query, "alpha");
     assert_eq!(
         sb.names(&sb.root),
@@ -388,7 +388,7 @@ fn screen(buffer: &ratatui::buffer::Buffer) -> String {
 }
 
 #[test]
-fn help_lists_the_shortcuts_and_what_ctrl_t_does_in_each_list() {
+fn help_lists_the_shortcuts_and_what_ctrl_a_does_in_each_list() {
     let (_sb, ctx, mut app) = setup();
     app.on_key(&ctx, key(KeyCode::Char('?')));
     let text = screen(&render(&mut app, 120, 20));
@@ -396,8 +396,8 @@ fn help_lists_the_shortcuts_and_what_ctrl_t_does_in_each_list() {
         "Enter",
         "Tab / Shift+Tab",
         "Ctrl+Q",
-        "Ctrl+A",
-        "Ctrl+T            Archive",
+        "Ctrl+T",
+        "Ctrl+A            Archive",
         "Ctrl+R",
         "Ctrl+O",
         "Ctrl+P",
@@ -406,10 +406,10 @@ fn help_lists_the_shortcuts_and_what_ctrl_t_does_in_each_list() {
         assert!(text.contains(expected), "missing {expected:?}:\n{text}");
     }
     app.on_key(&ctx, key(KeyCode::Esc));
-    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('t'));
     app.on_key(&ctx, key(KeyCode::Char('?')));
     let text = screen(&render(&mut app, 120, 20));
-    assert!(text.contains("Ctrl+T            Restore"), "{text}");
+    assert!(text.contains("Ctrl+A            Restore"), "{text}");
 }
 
 #[test]
@@ -510,8 +510,8 @@ fn width_ambiguous_invisible_characters_never_reach_the_screen() {
     )
     .unwrap();
     fs::create_dir_all(sb.root.join("delta\u{FE0F}")).unwrap();
-    app.on_key(&ctx, ctrl('a'));
-    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('t'));
     app = App::new(&ctx).unwrap();
     app.status = Some(flatdir::tui::Status {
         text: "archived: x\u{FE0F}y".into(),
@@ -563,7 +563,7 @@ fn ctrl_o_opens_the_current_entry_in_the_file_manager_and_changes_nothing() {
     assert!(sb.names(&sb.trash_dir).is_empty() && !sb.archive_dir().exists());
 
     fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
-    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('t'));
     app.on_key(&ctx, ctrl('o'));
     assert_eq!(
         sb.opened.lock().unwrap().last().unwrap(),
@@ -603,8 +603,8 @@ fn help_opens_on_top_and_shows_every_item_whole() {
         "Enter             cd",
         "Tab / Shift+Tab   Mark",
         "Ctrl+Q            Clear Marks",
-        "Ctrl+A            Toggle List: Active/Archived",
-        "Ctrl+T            Archive",
+        "Ctrl+T            Toggle List: Active/Archived",
+        "Ctrl+A            Archive",
         "Ctrl+R            Move to Trash",
         "Ctrl+O            Open in",
         "Ctrl+P            Toggle Preview: README/Tree",
@@ -635,7 +635,7 @@ fn help_takes_the_keys_until_it_is_closed() {
     // Nothing reaches the hidden list: no filtering, no actions, no mouse.
     app.on_key(&ctx, key(KeyCode::Char('b')));
     app.on_key(&ctx, ctrl('r'));
-    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('a'));
     app.on_key(&ctx, key(KeyCode::Enter));
     app.on_paste("beta");
     render(&mut app, 100, 20);
@@ -856,8 +856,8 @@ fn the_title_keeps_its_layout_when_the_mode_changes() {
         assert_eq!(snapshot(&mut app), baseline, "width {width}: Ctrl+P");
         app.on_key(&ctx, key(KeyCode::Tab));
         assert_eq!(snapshot(&mut app), baseline, "width {width}: marking");
-        app.on_key(&ctx, ctrl('a'));
-        assert_eq!(snapshot(&mut app), baseline, "width {width}: Ctrl+A");
+        app.on_key(&ctx, ctrl('t'));
+        assert_eq!(snapshot(&mut app), baseline, "width {width}: Ctrl+T");
     }
 }
 
@@ -940,7 +940,7 @@ fn right_click_marks_the_clicked_row_and_leaves_the_cursor_alone() {
     assert_eq!(app.marks.len(), 1);
 
     // Marks made with the mouse are what the keyboard actions use.
-    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('a'));
     assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
 }
 
@@ -958,7 +958,7 @@ fn ctrl_q_clears_every_mark_and_nothing_else() {
     assert_eq!(app.kind, ListKind::Active);
 
     // Without marks the actions use the current row only, so a reset really does narrow them.
-    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('a'));
     assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
     assert_eq!(shown(&app), ["alpha", "beta"]);
 }

@@ -24,7 +24,7 @@ pub enum ListKind {
     Archived,
 }
 
-/// Ctrl+R moves to the trash. Ctrl+T toggles the archived state: archive in the active list,
+/// Ctrl+R moves to the trash. Ctrl+A toggles the archived state: archive in the active list,
 /// restore in the archived list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Op {
@@ -227,8 +227,8 @@ impl App {
                     None => Outcome::Continue,
                 };
             }
-            (KeyCode::Char('a'), true) => self.toggle_list(ctx),
-            (KeyCode::Char('t'), true) => self.execute(ctx, Op::ToggleArchived),
+            (KeyCode::Char('t'), true) => self.toggle_list(ctx),
+            (KeyCode::Char('a'), true) => self.execute(ctx, Op::ToggleArchived),
             (KeyCode::Char('p'), true) => self.preview_mode = self.preview_mode.toggled(),
             (KeyCode::Char('r'), true) => self.execute(ctx, Op::Trash),
             (KeyCode::Char('o'), true) => self.open_current(ctx),

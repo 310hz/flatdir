@@ -10,8 +10,8 @@
 | `Enter` | 現在行のパスを出力して終了(Active ならプロジェクト、Archived ならアーカイブ先) |
 | `Tab` / `Shift+Tab` | 現在行にマークを付け外しして下/上へ |
 | `Ctrl+Q` | すべてのマークを解除(カーソルや一覧はそのまま。マークが無ければ何もしない) |
-| `Ctrl+A` | Active / Archived の切り替え。マークとアクションはリセット |
-| `Ctrl+T` | マーク済み(無ければ現在行)のアーカイブ状態を反転: Active ではアーカイブ、Archived では復元 |
+| `Ctrl+T` | Active / Archived の切り替え。マークとアクションはリセット |
+| `Ctrl+A` | マーク済み(無ければ現在行)のアーカイブ状態を反転: Active ではアーカイブ、Archived では復元 |
 | `Ctrl+R` | マーク済み(無ければ現在行)をゴミ箱へ(両方の一覧で有効) |
 | `Ctrl+O` | 現在行のディレクトリをファイルマネージャで開く(macOS は `open`=Finder、他は `xdg-open`)。何も変更しない |
 | `Ctrl+P` | プレビュー切り替え: README(Markdown)⇄ ツリー。README が無ければツリーに自動フォールバック |
@@ -21,7 +21,7 @@
 | `?` | ヘルプ(ショートカット一覧)を手前に開く。開いている間は `?` / `Esc` で閉じ、`Ctrl+C` で終了。それ以外のキー・マウス・貼り付けは捨てる |
 | `Esc` / `Ctrl+C` | 終了 |
 
-Ctrl+R(ゴミ箱)と Ctrl+T(アーカイブ/復元)は、どちらもモード無しの 1 キー操作。当初「Ctrl+R で実行、Ctrl+T で Archive⇄Remove のモード切替」と解釈して実装したが、ユーザーの意図と違ったため改めた。色は使わない(エラー行の赤とマークの色のみ)。
+Ctrl+R(ゴミ箱)と Ctrl+A(アーカイブ/復元)は、どちらもモード無しの 1 キー操作。当初「Ctrl+R で実行、Ctrl+T で Archive⇄Remove のモード切替」と解釈して実装したが、ユーザーの意図と違ったため改めた。その後、頭文字に合わせて一覧の切り替え(Toggle)を Ctrl+T、アーカイブ/復元(Archive)を Ctrl+A に入れ替えた(ユーザー指示)。色は使わない(エラー行の赤とマークの色のみ)。
 
 ## 構成と一般化の方針
 
@@ -36,7 +36,7 @@ Ctrl+R(ゴミ箱)と Ctrl+T(アーカイブ/復元)は、どちらもモード�
 最初のフレームは、ディレクトリ直下の読み取りだけで描く(約 3ms)。次の処理は待たない:
 
 - zoxide のスコア: 別スレッドで取得し、届いたら並び替える(カーソル位置のエントリは維持)。
-- アーカイブ一覧: `Ctrl+A` を最初に押したときに読む。
+- アーカイブ一覧: `Ctrl+T` を最初に押したときに読む。
 - プレビュー: 現在行の分だけを、描画時に生成して 1 件キャッシュする。
 
 既知の限界: プレビューは同期生成。巨大なディレクトリでは描画が詰まる可能性がある(ツリーは深さ 3・300 件で打ち切り)。必要になったら別スレッド化する。
@@ -70,8 +70,8 @@ ratatui と端末で文字幅の解釈が割れると、その行の残りがず
 
 - 縦の並びは「タイトル行 / 空き行 / クエリ行 / 一覧 / ステータス行」。タイトル行は左に `flatdir` と Active / Archived のタブ・件数、右端に `? Help`。プログラム名とタブの間は `TITLE_GAP`(4 桁)空ける。
 - 件数と「N marked」は固定幅で確保し、モードやマークでタイトル行の項目が動かないようにする。
-- ヘルプは画面中央に重ねる枠(`Clear` で下を消してから描く)。開いている間は、隠れた一覧への操作(特に Ctrl+R / Ctrl+T)が誤って走らないよう、閉じる・終了以外の入力をすべて捨てる。
-- ヘルプの説明は Title Case の動詞句に揃える(macOS のメニュー項目の慣例。例: `Move to Trash`、`Open in Finder`。Linux では `Open in File Manager`)。例外は `Enter` の `cd`(コマンド名なので小文字のまま)。切り替え系は `Toggle List: Active/Archived` のように「対象: 候補」の形にする(プレビューの候補名は、ペインの見出しと同じ `README`/`Tree`)。`Ctrl+T` だけは今の一覧でする動作(`Archive`/`Restore`)を出す。
+- ヘルプは画面中央に重ねる枠(`Clear` で下を消してから描く)。開いている間は、隠れた一覧への操作(特に Ctrl+R / Ctrl+A)が誤って走らないよう、閉じる・終了以外の入力をすべて捨てる。
+- ヘルプの説明は Title Case の動詞句に揃える(macOS のメニュー項目の慣例。例: `Move to Trash`、`Open in Finder`。Linux では `Open in File Manager`)。例外は `Enter` の `cd`(コマンド名なので小文字のまま)。切り替え系は `Toggle List: Active/Archived` のように「対象: 候補」の形にする(プレビューの候補名は、ペインの見出しと同じ `README`/`Tree`)。`Ctrl+A` だけは今の一覧でする動作(`Archive`/`Restore`)を出す。
 - 実端末テスト(`tests/cli.rs`)のマウス座標は `FIRST_LIST_ROW` 1 か所に集約している。タイトル周りの行数を変えたらこの定数を直す。
 - 回帰テスト: `the_title_keeps_its_layout_when_the_mode_changes`、`the_title_has_room_before_the_tabs_and_a_blank_row_above_the_content`、`help_takes_the_keys_until_it_is_closed`。
 ## Enter で cd する仕組み

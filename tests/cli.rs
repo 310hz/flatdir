@@ -259,16 +259,16 @@ fn zoxide_score_decides_the_order_after_the_first_frame() {
 }
 
 #[test]
-fn ctrl_t_archives_and_ctrl_a_then_ctrl_t_restores() {
+fn ctrl_a_archives_and_ctrl_t_then_ctrl_a_restores() {
     let sb = Sandbox::new();
     sb.track();
     fs::write(sb.root.join("alpha/keep.txt"), "x").unwrap();
 
-    sb.run_in_pty(&[], &[], "alpha", "\x14|\x03");
+    sb.run_in_pty(&[], &[], "alpha", "\x01|\x03");
     assert_eq!(sb.names(&sb.root), ["beta"]);
     assert!(sb.archive_dir().join("alpha/keep.txt").is_file());
 
-    sb.run_in_pty(&[], &[], "beta", "\x01|\x14|\x03");
+    sb.run_in_pty(&[], &[], "beta", "\x14|\x01|\x03");
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
     assert!(sb.root.join("alpha/keep.txt").is_file());
     assert!(sb.names(&sb.archive_dir()).is_empty());
@@ -279,7 +279,7 @@ fn tab_marks_several_rows_for_one_action() {
     let sb = Sandbox::new();
     fs::create_dir_all(sb.root.join("gamma")).unwrap();
     sb.track();
-    sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x14|\x03");
+    sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x01|\x03");
     assert_eq!(sb.names(&sb.root), ["gamma"]);
     assert_eq!(sb.names(&sb.archive_dir()), ["alpha", "beta"]);
 }
@@ -288,7 +288,7 @@ fn tab_marks_several_rows_for_one_action() {
 fn typed_text_filters_and_a_paste_cannot_trigger_shortcuts() {
     let sb = Sandbox::new();
     sb.track();
-    let text = sb.run_in_pty(&[], &[], "alpha", "\x1b[200~\x14\x14\x1b[201~|\x03");
+    let text = sb.run_in_pty(&[], &[], "alpha", "\x1b[200~\x01\x01\x1b[201~|\x03");
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"], "{text}");
     assert!(sb.names(&sb.archive_dir()).is_empty());
 }
@@ -445,12 +445,12 @@ fn clicking_a_row_moves_the_cursor_and_right_clicking_marks_it() {
         "{text}"
     );
 
-    // Right click marks the second row; Ctrl+T then archives exactly the marked entry.
+    // Right click marks the second row; Ctrl+A then archives exactly the marked entry.
     sb.run_in_pty(
         &[],
         &[],
         "alpha",
-        &format!("\x1b[<2;5;{row}M\x1b[<2;5;{row}m|\x14|\x03"),
+        &format!("\x1b[<2;5;{row}M\x1b[<2;5;{row}m|\x01|\x03"),
     );
     assert_eq!(sb.names(&sb.root), ["alpha", "gamma"]);
     assert_eq!(sb.names(&sb.archive_dir()), ["beta"]);
@@ -462,7 +462,7 @@ fn ctrl_q_resets_the_marks_before_an_action() {
     fs::create_dir_all(sb.root.join("gamma")).unwrap();
     sb.track();
     // Mark alpha and beta (the cursor ends on gamma), reset with Ctrl+Q, then archive: only gamma moves.
-    sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x11|\x14|\x03");
+    sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x11|\x01|\x03");
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
     assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
 }
