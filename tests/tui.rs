@@ -194,7 +194,7 @@ fn marking_every_entry_is_refused_by_both_keys_and_nothing_moves() {
     }
     assert_eq!(app.marks.len(), 3);
 
-    for k in ['t', 'r'] {
+    for k in ['a', 'r'] {
         app.on_key(&ctx, ctrl(k));
         let status = app.status.as_ref().unwrap();
         assert!(
