@@ -585,3 +585,43 @@ fn the_shortcut_line_wraps_on_narrow_terminals_without_losing_keys() {
         );
     }
 }
+
+/// The preview text must not touch the vertical separator; the tree's own `│` used to line up with it.
+#[test]
+fn the_preview_keeps_a_gap_from_the_vertical_line() {
+    let (sb, ctx, mut app) = setup();
+    let dir = sb.root.join("alpha");
+    fs::create_dir_all(dir.join("src")).unwrap();
+    fs::write(dir.join("src/main.rs"), "").unwrap();
+    fs::write(dir.join("Cargo.toml"), "").unwrap();
+    app.on_key(&ctx, ctrl('p'));
+
+    let buffer = render(&mut app, 100, 20);
+    let width = buffer.area.width as usize;
+    let rows: Vec<Vec<&str>> = buffer
+        .content
+        .chunks(width)
+        .map(|r| r.iter().map(|c| c.symbol()).collect())
+        .collect();
+    let border_x = rows[4]
+        .iter()
+        .position(|s| *s == "│")
+        .expect("vertical line on the first list row");
+
+    let mut checked = 0;
+    for row in &rows[5..18] {
+        assert_eq!(row[border_x], "│", "the separator runs the full height");
+        let gap = flatdir::tui::ui::PREVIEW_PAD_LEFT as usize;
+        assert!(
+            row[border_x + 1..=border_x + gap].iter().all(|s| *s == " "),
+            "text touches the separator: {row:?}"
+        );
+        if row[border_x + gap + 1..].iter().any(|s| *s != " ") {
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 4,
+        "the tree was drawn ({checked} rows with content)"
+    );
+}

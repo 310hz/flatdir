@@ -7,7 +7,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
 
 use super::app::{App, ListKind};
@@ -15,6 +15,8 @@ use super::preview::{self, PreviewMode, Shown};
 use super::text;
 
 const MIN_WIDTH_FOR_PREVIEW: u16 = 70;
+/// Blank columns between the vertical line and the preview text, so the tree's own `│` never lines up with it.
+pub const PREVIEW_PAD_LEFT: u16 = 2;
 pub const MARK_COLOR: Color = Color::Magenta;
 pub const DANGER_COLOR: Color = Color::Red;
 
@@ -218,6 +220,7 @@ fn draw_preview(frame: &mut Frame, app: &App, cache: &mut PreviewCache, area: Re
     let block = Block::default()
         .borders(Borders::LEFT)
         .border_style(dim())
+        .padding(Padding::new(PREVIEW_PAD_LEFT, 1, 0, 0))
         .title(Span::styled(title, dim()));
     let inner = block.inner(area);
     frame.render_widget(block, area);
