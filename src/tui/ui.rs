@@ -117,14 +117,14 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
     ];
 
     let other_list = match app.kind {
-        ListKind::Active => "Archived",
-        ListKind::Archived => "Active",
+        ListKind::Active => "Show Archived",
+        ListKind::Archived => "Show Active",
     };
     let preview_name = match app.preview_mode {
         PreviewMode::Markdown => "Markdown",
         PreviewMode::Tree => "Tree",
     };
-    let other_list = pad_to_longest(other_list, &["Archived", "Active"]);
+    let other_list = pad_to_longest(other_list, &["Show Archived", "Show Active"]);
     let toggle = pad_to_longest(toggle_label(app.kind), &["Archive", "Restore"]);
     let preview_name = pad_to_longest(preview_name, &["Markdown", "Tree"]);
     let item = |key: &'static str, label: String| {
@@ -134,19 +134,26 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
         ]
     };
     let items = vec![
-        item("Enter", "cd".into()),
-        item("Tab", "mark".into()),
-        item("Ctrl+Q", "unmark".into()),
+        item("Enter", "Change Directory".into()),
+        item("Tab", "Mark".into()),
+        item("Ctrl+Q", "Clear Marks".into()),
         item("Ctrl+A", other_list),
         item("Ctrl+T", toggle),
-        item("Ctrl+R", "Trash".into()),
-        item("Ctrl+O", "open".into()),
-        item("Ctrl+P", format!("preview: {preview_name}")),
-        item("Esc", "quit".into()),
+        item("Ctrl+R", "Move to Trash".into()),
+        item("Ctrl+O", OPEN_LABEL.into()),
+        item("Ctrl+P", format!("Preview: {preview_name}")),
+        item("Esc", "Quit".into()),
     ];
 
     (Line::from(title), flow(items, width))
 }
+
+/// Names the app `Opener` actually launches (`open` on macOS, `xdg-open` elsewhere).
+const OPEN_LABEL: &str = if cfg!(target_os = "macos") {
+    "Open in Finder"
+} else {
+    "Open in File Manager"
+};
 
 /// Space between the program name and the Active / Archived tabs.
 const TITLE_GAP: &str = "    ";

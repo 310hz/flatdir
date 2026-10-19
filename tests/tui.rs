@@ -580,15 +580,15 @@ fn the_header_mentions_ctrl_o() {
 fn shortcuts_wrap_only_between_items() {
     let (_sb, _ctx, mut app) = setup();
     let items = [
-        "Enter cd",
-        "Tab mark",
-        "Ctrl+Q unmark",
-        "Ctrl+A Archived",
+        "Enter Change Directory",
+        "Tab Mark",
+        "Ctrl+Q Clear Marks",
+        "Ctrl+A Show Archived",
         "Ctrl+T Archive",
-        "Ctrl+R Trash",
-        "Ctrl+O open",
-        "Ctrl+P preview: Markdown",
-        "Esc quit",
+        "Ctrl+R Move to Trash",
+        "Ctrl+O Open in",
+        "Ctrl+P Preview: Markdown",
+        "Esc Quit",
     ];
     for width in [30, 40, 60, 80, 100, 140] {
         let text = screen(&render(&mut app, width, 24));
