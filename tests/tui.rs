@@ -629,7 +629,8 @@ fn the_preview_keeps_a_gap_from_the_vertical_line() {
         .expect("vertical line on the first list row");
 
     let mut checked = 0;
-    for row in &rows[first + 1..first + 14] {
+    let height = app.panes.list.height as usize;
+    for row in &rows[first + 1..first + height] {
         assert_eq!(row[border_x], "│", "the separator runs the full height");
         let gap = flatdir::tui::ui::PREVIEW_PAD_LEFT as usize;
         assert!(
@@ -964,4 +965,34 @@ fn ctrl_q_without_marks_is_a_quiet_no_op() {
     let (_sb, ctx, mut app) = setup();
     app.on_key(&ctx, ctrl('q'));
     assert!(app.marks.is_empty() && app.status.is_none());
+}
+
+#[test]
+fn the_title_has_room_before_the_tabs_and_a_blank_row_above_the_shortcuts() {
+    let (_sb, _ctx, mut app) = setup();
+    for width in [50, 100] {
+        let text = screen(&render(&mut app, width, 24));
+        let rows: Vec<&str> = text.lines().collect();
+
+        let title = rows
+            .iter()
+            .position(|r| r.starts_with("flatdir"))
+            .expect("title row");
+        let name_end = "flatdir".len();
+        let tab = rows[title].find("Active").expect("Active tab");
+        assert!(
+            tab - name_end >= 4,
+            "width {width}: tabs sit too close to the title: {:?}",
+            rows[title]
+        );
+
+        assert!(
+            rows[title + 1].trim().is_empty(),
+            "width {width}: blank row under the title"
+        );
+        assert!(
+            rows[title + 2].starts_with("Enter"),
+            "width {width}: shortcuts follow the blank row"
+        );
+    }
 }

@@ -21,6 +21,10 @@ fn warm_up(path: &Path) {
         .output();
 }
 
+/// Row (1-based) of the first list entry in the 100-column pty: title, blank row, two rows of
+/// shortcuts, a blank row and the query line come first.
+const FIRST_LIST_ROW: u16 = 7;
+
 struct Sandbox {
     _guard: TempDir,
     tmp: PathBuf,
@@ -374,13 +378,23 @@ fn the_mouse_wheel_moves_the_cursor_over_the_list_but_not_over_the_preview() {
     let sb = Sandbox::new();
     sb.track();
 
-    let over_list = sb.run_in_pty(&[], &[], "alpha", "\x1b[<65;5;6M|\r");
+    let over_list = sb.run_in_pty(
+        &[],
+        &[],
+        "alpha",
+        &format!("\x1b[<65;5;{FIRST_LIST_ROW}M|\r"),
+    );
     assert!(
         over_list.contains(sb.root.join("beta").to_str().unwrap()),
         "{over_list}"
     );
 
-    let over_preview = sb.run_in_pty(&[], &[], "alpha", "\x1b[<65;80;6M|\r");
+    let over_preview = sb.run_in_pty(
+        &[],
+        &[],
+        "alpha",
+        &format!("\x1b[<65;80;{FIRST_LIST_ROW}M|\r"),
+    );
     assert!(
         over_preview.contains(sb.root.join("alpha").to_str().unwrap()),
         "{over_preview}"
@@ -399,22 +413,27 @@ fn mouse_reporting_is_enabled_only_while_the_tui_runs() {
 }
 
 /// SGR mouse reports: button 0 = left, 2 = right; `M` = press, `m` = release; coordinates are 1-based.
-/// At 100 columns the header takes 3 rows, then a blank row and the query line, so the list starts on row 6.
 #[test]
 fn clicking_a_row_moves_the_cursor_and_right_clicking_marks_it() {
     let sb = Sandbox::new();
     fs::create_dir_all(sb.root.join("gamma")).unwrap();
     sb.track();
 
-    let left_click_second_row = "\x1b[<0;5;7M\x1b[<0;5;7m|\r";
-    let text = sb.run_in_pty(&[], &[], "alpha", left_click_second_row);
+    let row = FIRST_LIST_ROW + 1;
+    let left_click_second_row = format!("\x1b[<0;5;{row}M\x1b[<0;5;{row}m|\r");
+    let text = sb.run_in_pty(&[], &[], "alpha", &left_click_second_row);
     assert!(
         text.contains(sb.root.join("beta").to_str().unwrap()),
         "{text}"
     );
 
     // Right click marks the second row; Ctrl+T then archives exactly the marked entry.
-    sb.run_in_pty(&[], &[], "alpha", "\x1b[<2;5;7M\x1b[<2;5;7m|\x14|\x03");
+    sb.run_in_pty(
+        &[],
+        &[],
+        "alpha",
+        &format!("\x1b[<2;5;{row}M\x1b[<2;5;{row}m|\x14|\x03"),
+    );
     assert_eq!(sb.names(&sb.root), ["alpha", "gamma"]);
     assert_eq!(sb.names(&sb.archive_dir()), ["beta"]);
 }

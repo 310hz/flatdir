@@ -32,7 +32,8 @@ pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
     let (title, hints) = header_lines(app, frame.area().width as usize);
     // Never let the header take more than half of the screen, so the list always stays visible.
     let max_header = (frame.area().height as usize / 2).max(2);
-    let header_height = (1 + hints.len()).min(max_header) as u16;
+    // Title row, a blank row, then the shortcuts.
+    let header_height = (2 + hints.len()).min(max_header) as u16;
     let [header, _spacer, query, body, status] = Layout::vertical([
         Constraint::Length(header_height),
         Constraint::Length(1),
@@ -42,7 +43,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
     ])
     .areas(frame.area());
 
-    let mut lines = vec![title];
+    let mut lines = vec![title, Line::default()];
     lines.extend(hints);
     frame.render_widget(Paragraph::new(lines), header);
     draw_query(frame, app, query);
@@ -100,7 +101,8 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
         format!("{} marked", app.marks.len())
     };
     let title = vec![
-        Span::styled("flatdir ", bold()),
+        Span::styled("flatdir", bold()),
+        Span::raw(TITLE_GAP),
         tab("Active", app.kind == ListKind::Active),
         Span::raw(" "),
         tab("Archived", app.kind == ListKind::Archived),
@@ -145,6 +147,9 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
 
     (Line::from(title), flow(items, width))
 }
+
+/// Space between the program name and the Active / Archived tabs.
+const TITLE_GAP: &str = "    ";
 
 /// Room reserved for "NNN marked".
 const COUNT_WIDTH: usize = 10;

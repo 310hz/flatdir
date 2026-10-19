@@ -68,5 +68,6 @@ ratatui と端末で文字幅の解釈が割れると、その行の残りがず
 モードが変わるたびにヘッダの項目が動いたり行数が変わったりすると、下の内容が上下してしまう。
 
 - モードで変わる文言(`Ctrl+A` の行き先 `Archived`/`Active`、`Ctrl+T` の `Archive`/`Restore`、プレビュー名 `Markdown`/`Tree`)は、最も長い候補の幅まで空白で埋める(`pad_to_longest`)。件数と「N marked」も固定幅で確保する。その結果、折り返しの行数と各キーの桁がモードによらず一定になる。
-- ヘッダとクエリ行の間に空き行を 1 行入れる(`draw` のレイアウト)。
+- 縦の並びは「タイトル行 / 空き行 / ショートカット(1〜数行)/ 空き行 / クエリ行 / 一覧」。プログラム名とタブの間は `TITLE_GAP`(4 桁)空ける。
+- 実端末テスト(`tests/cli.rs`)のマウス座標は `FIRST_LIST_ROW` 1 か所に集約している。ヘッダの行数を変えたらこの定数を直す。
 - 回帰テスト: `the_header_keeps_its_layout_when_the_mode_changes`(幅 50〜140 で、モード切替・マーク・両方切替の前後で各キーの位置とリスト開始行が同じ)、`a_blank_row_separates_the_navigation_from_the_query_line`。文言を足すときは、取りうる候補を `pad_to_longest` に全部渡すこと。
