@@ -5,7 +5,7 @@
 | コマンド | 挙動・副作用 |
 |---|---|
 | (なし) | TUI を開く。Enter で現在行のパスを出力して終了。対話端末が必要 |
-| `root [<path>] [--unset]` | 引数なし: 管理 root を stdout に出す(未設定ならエラー)。`<path>`: 管理 root を設定(HOME 配下のみ)。設定済みでも入れ替わる。`--unset`: 解除。設定ファイルのみ変更。旧 root のアーカイブは各パスの下に残り、その root に戻すとまた見える |
+| `root [<path>] [--unset \| --cd]` | 引数なし: 管理 root を stdout に出す(未設定ならエラー)。`--cd`: 同じく出力し、シェル関数がそこへ `cd` する(関数が無く stdout が端末なら案内を stderr に出す)。`<path>`: 管理 root を設定(HOME 配下のみ)。設定済みでも入れ替わる。`--unset`: 解除。設定ファイルのみ変更。旧 root のアーカイブは各パスの下に残り、その root に戻すとまた見える |
 | `status` | 管理 root・直下のディレクトリ数・アーカイブ先と件数・設定パス・`color`・任意コマンドの有無を表示(stdout)。読み取りのみで、root 未設定や読めない場合も報告して正常終了 |
 | `init <name> [--git]` | root 直下に作成。`--git` は GitHub に private リポジトリを作成して clone、README の初回 push まで行う |
 | `clone [-s] [target]` | root 直下に `git clone`。`target` は URL・`owner/repo`・`repo`(自分のアカウント)。見つからなければ検索(`-s` も同じピッカー)。同名があれば確認のうえゴミ箱へ送って上書き |

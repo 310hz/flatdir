@@ -38,6 +38,9 @@ enum Command {
         /// Unset the managed root
         #[arg(long, conflicts_with = "path")]
         unset: bool,
+        /// cd into the managed root (through the shell function, like Enter in the TUI)
+        #[arg(long, conflicts_with_all = ["path", "unset"])]
+        cd: bool,
     },
     /// Show the managed root, directory counts and required commands
     Status,
@@ -102,6 +105,7 @@ fn run(cli: Cli) -> Result<()> {
                 cmd::unset_root(&mut context()?)?.display()
             )
         }
+        Some(Command::Root { cd: true, .. }) => print_path(Some(context()?.root()?.to_path_buf())),
         Some(Command::Root { .. }) => {
             let ctx = context()?;
             println!("{}", ctx.root()?.display());

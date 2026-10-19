@@ -22,6 +22,7 @@ flatdir status               # show the root, directory/archive counts and optio
 flatdir init <name> [--git]  # create a directory (--git also creates a private GitHub repo)
 flatdir clone [-s] [target]  # git clone (-s searches GitHub)
 flatdir root                 # print the managed root
+flatdir root --cd            # cd into it (needs the shell function below)
 flatdir root --unset         # unset it
 ```
 
@@ -63,11 +64,15 @@ flatdir() {
   local out
   out="$(command flatdir "$@")" || return
   [ -z "$out" ] && return
-  if [ "$#" -eq 0 ] && [ -d "$out" ]; then
-    cd "$out"
-  else
-    printf '%s\n' "$out"
-  fi
+  case "$*" in
+    "" | "root --cd")
+      if [ -d "$out" ]; then
+        cd "$out"
+        return
+      fi
+      ;;
+  esac
+  printf '%s\n' "$out"
 }
 ```
 

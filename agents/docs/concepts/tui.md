@@ -74,10 +74,13 @@ ratatui と端末で文字幅の解釈が割れると、その行の残りがず
 - ヘルプの説明は Title Case の動詞句に揃える(macOS のメニュー項目の慣例。例: `Move to Trash`、`Open in Finder`。Linux では `Open in File Manager`)。例外は `Enter` の `cd`(コマンド名なので小文字のまま)。切り替え系は `Toggle List: Active/Archived` のように「対象: 候補」の形にする(プレビューの候補名は、ペインの見出しと同じ `README`/`Tree`)。`Ctrl+A` だけは今の一覧でする動作(`Archive`/`Restore`)を出す。
 - 実端末テスト(`tests/cli.rs`)のマウス座標は `FIRST_LIST_ROW` 1 か所に集約している。タイトル周りの行数を変えたらこの定数を直す。
 - 回帰テスト: `the_title_keeps_its_layout_when_the_mode_changes`、`the_title_has_room_before_the_tabs_and_a_blank_row_above_the_content`、`help_takes_the_keys_until_it_is_closed`。
+
 ## Enter で cd する仕組み
 
 プログラムは親シェルのカレントディレクトリを変えられないので、`flatdir` は選んだパスを stdout に出すだけ。シェル関数(`src/shell.rs` の `SHELL_FUNCTION`、`flatdir shell` で出力)が出力を `$(...)` で受け取って `cd` する。
 
+- `cd` するのは、引数なし(TUI)と `root --cd` のときだけ。`root`(引数なし)や `status` などの出力はそのまま表示する。どの呼び出しで `cd` するかは、関数側で引数を見て決める(バイナリの出力形式は変えない。出力に目印を付けると、関数を使わない人の画面に目印が出てしまう)。
+
 - 関数が無いと「パスが表示されるだけ」になる。以前、dotfiles 側の関数をコメントアウトしたまま気づかず、`cd` が動かない状態が続いた。
 - 再発防止: stdout が端末のとき(= 関数に受け取られていない)は、案内を stderr に出す。関数経由なら stdout はパイプなので出ない。
-- 検証: `tests/cli.rs` の `enter_changes_the_directory_in_zsh` / `_in_bash` が、実際のシェルを pty で動かして `cd` を確かめる。README の関数と `flatdir shell` の出力が同一であることもテストしている。
+- 検証: `tests/cli.rs` の `enter_changes_the_directory_in_zsh` / `_in_bash` と `root_cd_changes_the_directory_in_zsh` / `_in_bash` が、実際のシェルを pty で動かして `cd` を確かめる。README の関数と `flatdir shell` の出力が同一であることもテストしている。

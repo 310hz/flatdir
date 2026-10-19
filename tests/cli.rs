@@ -548,6 +548,56 @@ fn enter_changes_the_directory_in_bash() {
     assert_enter_changes_directory_in("/bin/bash");
 }
 
+/// `root --cd` goes to the root through the same function, while plain `root` only prints it.
+fn assert_root_cd_changes_directory_in(shell: &str) {
+    if !Path::new(shell).exists() {
+        eprintln!("skipping: {shell} is not installed");
+        return;
+    }
+    let sb = Sandbox::new();
+    sb.track();
+    sb.link_binary();
+    let script = r#"eval "$(flatdir shell)"; cd /; flatdir root; echo "AFTER_ROOT=$(pwd)"; flatdir root --cd; echo "PWD=$(pwd)""#;
+    let text = sb.run_program_in_pty(shell, &["-c", script], &[], "PWD=", "");
+    assert!(
+        text.contains("AFTER_ROOT=/\r"),
+        "{shell}: plain root moved:\n{text}"
+    );
+    assert!(
+        text.contains(&format!("PWD={}", sb.root.display())),
+        "{shell}: the shell did not cd into the root:\n{text}"
+    );
+}
+
+#[test]
+fn root_cd_changes_the_directory_in_zsh() {
+    assert_root_cd_changes_directory_in("/bin/zsh");
+}
+
+#[test]
+fn root_cd_changes_the_directory_in_bash() {
+    assert_root_cd_changes_directory_in("/bin/bash");
+}
+
+#[test]
+fn root_cd_without_the_function_prints_the_root_and_a_hint() {
+    let sb = Sandbox::new();
+    sb.track();
+    let captured = sb.run(&["root", "--cd"]);
+    assert!(captured.status.success());
+    assert_eq!(stdout(&captured), sb.root.to_str().unwrap());
+    assert!(
+        captured.stderr.is_empty(),
+        "no hint when the output is captured"
+    );
+
+    let shown = sb.run_in_pty(&["root", "--cd"], &[], "eval", "");
+    assert!(shown.contains("flatdir shell"), "{shown}");
+
+    let conflict = sb.run(&["root", "--cd", "--unset"]);
+    assert!(!conflict.status.success());
+}
+
 #[test]
 fn the_shell_function_is_printed_and_documented_verbatim() {
     let sb = Sandbox::new();
