@@ -567,16 +567,24 @@ fn the_header_mentions_ctrl_o() {
 }
 
 #[test]
-fn the_shortcut_line_wraps_on_narrow_terminals_without_losing_keys() {
+fn shortcuts_wrap_only_between_items() {
     let (_sb, _ctx, mut app) = setup();
-    for width in [40, 60, 80, 100] {
+    let items = [
+        "Enter cd",
+        "Tab mark",
+        "Ctrl+A Archived",
+        "Ctrl+T Archive",
+        "Ctrl+R Trash",
+        "Ctrl+O open",
+        "Ctrl+P preview: Markdown",
+        "Esc quit",
+    ];
+    for width in [30, 40, 60, 80, 100, 140] {
         let text = screen(&render(&mut app, width, 24));
-        for expected in [
-            "Enter", "Ctrl+A", "Ctrl+T", "Ctrl+R", "Ctrl+O", "Ctrl+P", "Esc", "quit",
-        ] {
+        for item in items {
             assert!(
-                text.contains(expected),
-                "width {width}: missing {expected:?}\n{text}"
+                text.lines().any(|row| row.contains(item)),
+                "width {width}: {item:?} was split or lost:\n{text}"
             );
         }
         assert!(

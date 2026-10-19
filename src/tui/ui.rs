@@ -28,10 +28,11 @@ pub struct PreviewCache {
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
-    // The shortcut line wraps on narrow terminals; give it the rows it needs so nothing is cut off.
-    let (title, hints) = header_lines(app);
-    let width = frame.area().width.max(1) as usize;
-    let header_height = (1 + hints.width().div_ceil(width)).min(5) as u16;
+    // Shortcuts are laid out item by item, so a narrow terminal gets more rows instead of a split item.
+    let (title, hints) = header_lines(app, frame.area().width as usize);
+    // Never let the header take more than half of the screen, so the list always stays visible.
+    let max_header = (frame.area().height as usize / 2).max(2);
+    let header_height = (1 + hints.len()).min(max_header) as u16;
     let [header, query, body, status] = Layout::vertical([
         Constraint::Length(header_height),
         Constraint::Length(1),
@@ -40,10 +41,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
     ])
     .areas(frame.area());
 
-    frame.render_widget(
-        Paragraph::new(vec![title, hints]).wrap(Wrap { trim: false }),
-        header,
-    );
+    let mut lines = vec![title];
+    lines.extend(hints);
+    frame.render_widget(Paragraph::new(lines), header);
     draw_query(frame, app, query);
 
     if body.width >= MIN_WIDTH_FOR_PREVIEW {
@@ -74,7 +74,7 @@ pub fn toggle_label(kind: ListKind) -> &'static str {
     }
 }
 
-fn header_lines(app: &App) -> (Line<'static>, Line<'static>) {
+fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) {
     let tab = |label: &'static str, active: bool| {
         let style = if active {
             Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD)
@@ -105,28 +105,49 @@ fn header_lines(app: &App) -> (Line<'static>, Line<'static>) {
         PreviewMode::Markdown => "Markdown",
         PreviewMode::Tree => "Tree",
     };
-    let key = |k: &'static str| Span::styled(k, bold());
-    let hint = |label: String| Span::styled(format!(" {label}   "), dim());
-    let hints = Line::from(vec![
-        key("Enter"),
-        hint("cd".into()),
-        key("Tab"),
-        hint("mark".into()),
-        key("Ctrl+A"),
-        hint(other_list.into()),
-        key("Ctrl+T"),
-        hint(toggle_label(app.kind).into()),
-        key("Ctrl+R"),
-        hint("Trash".into()),
-        key("Ctrl+O"),
-        hint("open".into()),
-        key("Ctrl+P"),
-        hint(format!("preview: {preview_name}")),
-        key("Esc"),
-        Span::styled(" quit", dim()),
-    ]);
+    let item = |key: &'static str, label: String| {
+        vec![
+            Span::styled(key, bold()),
+            Span::styled(format!(" {label}"), dim()),
+        ]
+    };
+    let items = vec![
+        item("Enter", "cd".into()),
+        item("Tab", "mark".into()),
+        item("Ctrl+A", other_list.into()),
+        item("Ctrl+T", toggle_label(app.kind).into()),
+        item("Ctrl+R", "Trash".into()),
+        item("Ctrl+O", "open".into()),
+        item("Ctrl+P", format!("preview: {preview_name}")),
+        item("Esc", "quit".into()),
+    ];
 
-    (Line::from(title), hints)
+    (Line::from(title), flow(items, width))
+}
+
+/// Packs items into rows no wider than `width`, breaking only between items.
+fn flow(items: Vec<Vec<Span<'static>>>, width: usize) -> Vec<Line<'static>> {
+    const GAP: &str = "   ";
+    let mut rows: Vec<Line<'static>> = Vec::new();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut used = 0;
+    for item in items {
+        let item_width: usize = item.iter().map(|s| s.content.width()).sum();
+        if used > 0 && used + GAP.len() + item_width > width {
+            rows.push(Line::from(std::mem::take(&mut spans)));
+            used = 0;
+        }
+        if used > 0 {
+            spans.push(Span::raw(GAP));
+            used += GAP.len();
+        }
+        spans.extend(item);
+        used += item_width;
+    }
+    if !spans.is_empty() {
+        rows.push(Line::from(spans));
+    }
+    rows
 }
 
 fn draw_query(frame: &mut Frame, app: &App, area: Rect) {
