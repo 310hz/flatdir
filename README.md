@@ -61,7 +61,7 @@ The title row only points to the help (`? Help`); the help window lists the shor
 | Clone: GitHub | `owner/repo` or a URL is cloned; any other text is searched with `gh search repos` |
 | Clone: HF Model / Dataset / Space | the same for Hugging Face (search uses the public Hub API through `curl`) |
 
-The line above the results says exactly what Enter will do. After a search, choose a result with `Up` / `Down` and press Enter to clone it. For Hugging Face, `Ctrl+L` decides whether Git LFS files are downloaded (off by default: they stay as small pointer files, since model weights can be huge). Nothing is ever overwritten: a name that exists in the root or in the archive is refused. When it is done, the list comes back with the cursor on the new directory, so Enter goes there. `Esc` or `Ctrl+N` goes back to the list without creating anything.
+The line above the results says exactly what Enter will do. After a search, choose a result with `Up` / `Down` (or `j` / `k`) and press Enter to clone it. While results are shown the name is locked; `Esc` clears them so you can edit the search, and a second `Esc` goes back to the list. For Hugging Face, `Ctrl+L` decides whether Git LFS files are downloaded (off by default: they stay as small pointer files, since model weights can be huge). Nothing is ever overwritten: a name that exists in the root or in the archive is refused. When it is done, the list comes back with the cursor on the new directory, so Enter goes there. `Ctrl+N` (or `Esc` when no results are shown) goes back to the list without creating anything.
 
 Git runs without a terminal while the TUI is open, so it cannot ask for passwords or passphrases; use an SSH agent or a credential helper.
 

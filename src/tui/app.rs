@@ -79,11 +79,9 @@ impl NewForm {
         RECIPES[self.recipe]
     }
 
-    /// Results are shown only while the query and kind they were found for are unchanged.
-    pub fn hits_for(&self, query: &str) -> Option<&SearchResults> {
-        self.search
-            .as_ref()
-            .filter(|s| s.query == query.trim() && self.recipe() == Recipe::Clone(s.hub))
+    /// While results are shown the name and kind are locked, so they always match the results.
+    pub fn results(&self) -> Option<&SearchResults> {
+        self.search.as_ref()
     }
 }
 
@@ -242,7 +240,7 @@ impl App {
     }
 
     pub fn on_paste(&mut self, ctx: &Context, text: &str) {
-        if self.help {
+        if self.help || (self.new.open && (self.new.search.is_some() || self.is_busy())) {
             return;
         }
         // Pasted text is data, never commands: control characters are dropped.
@@ -316,32 +314,42 @@ impl App {
 
     /// Only name editing and the New view's own keys. Actions on the hidden list (archive, trash,
     /// open) are deliberately not reachable from here.
+    ///
+    /// Search results lock the name and kind (Esc unlocks them by clearing the results), and so
+    /// does a running job, so results never belong to text that is no longer there.
     fn on_new_key(&mut self, ctx: &Context, key: KeyEvent, ctrl: bool) -> Outcome {
+        let showing = self.new.search.is_some();
+        let editable = !showing && !self.is_busy();
         match (key.code, ctrl) {
             (KeyCode::Char('c'), true) => return Outcome::Quit,
+            (KeyCode::Esc, _) if showing => {
+                self.new.search = None;
+                self.status = None;
+            }
             (KeyCode::Esc, _) | (KeyCode::Char('n'), true) => {
                 self.new.open = false;
+                self.new.search = None;
                 self.status = None;
                 self.refilter();
             }
             (KeyCode::Char('?'), false) => self.help = true,
-            (KeyCode::Tab, _) => self.cycle_recipe(1),
-            (KeyCode::BackTab, _) => self.cycle_recipe(-1),
             (KeyCode::Char('l'), true) => {
                 if matches!(self.new.recipe(), Recipe::Clone(hub) if hub.is_hugging_face()) {
                     self.new.lfs = !self.new.lfs;
                 }
             }
-            (KeyCode::Down, _) => self.move_hit(1),
-            (KeyCode::Up, _) => self.move_hit(-1),
+            (KeyCode::Down, _) | (KeyCode::Char('j'), false) if showing => self.move_hit(1),
+            (KeyCode::Up, _) | (KeyCode::Char('k'), false) if showing => self.move_hit(-1),
             (KeyCode::PageDown, _) => self.move_hit(10),
             (KeyCode::PageUp, _) => self.move_hit(-10),
             (KeyCode::Enter, _) => self.submit_new(ctx),
-            (KeyCode::Char('u'), true) => self.query.clear(),
-            (KeyCode::Backspace, _) => {
+            (KeyCode::Tab, _) if editable => self.cycle_recipe(1),
+            (KeyCode::BackTab, _) if editable => self.cycle_recipe(-1),
+            (KeyCode::Char('u'), true) if editable => self.query.clear(),
+            (KeyCode::Backspace, _) if editable => {
                 self.query.pop();
             }
-            (KeyCode::Char(c), false) if !key.modifiers.contains(KeyModifiers::ALT) => {
+            (KeyCode::Char(c), false) if editable && !key.modifiers.contains(KeyModifiers::ALT) => {
                 self.query.push(c)
             }
             _ => {}
@@ -362,10 +370,6 @@ impl App {
     }
 
     fn move_hit(&mut self, delta: isize) {
-        let query = self.query.clone();
-        if self.new.hits_for(&query).is_none() {
-            return;
-        }
         if let Some(results) = self.new.search.as_mut() {
             let last = results.hits.len().saturating_sub(1) as isize;
             results.cursor = (results.cursor as isize + delta).clamp(0, last) as usize;
@@ -375,7 +379,7 @@ impl App {
     /// What Enter would do now; the New view shows it before it happens.
     pub fn new_plan(&self, ctx: &Context) -> anyhow::Result<Plan> {
         let recipe = self.new.recipe();
-        if let (Recipe::Clone(hub), Some(results)) = (recipe, self.new.hits_for(&self.query))
+        if let (Recipe::Clone(hub), Some(results)) = (recipe, self.new.results())
             && let Some(hit) = results.hits.get(results.cursor)
         {
             return create::plan_clone(ctx, hub, &hit.id, self.new.lfs).map(Plan::Run);
@@ -449,8 +453,10 @@ impl App {
             Done::Created(Err(e)) => self.fail(e),
             Done::Found { hub, query, hits } => match hits {
                 Ok(hits) if hits.is_empty() => self.info(format!("nothing found: {query}")),
+                // Closed meanwhile: results would lock a form nobody is looking at.
+                Ok(_) if !self.new.open => {}
                 Ok(hits) => {
-                    self.info(format!("{} found; choose with Up/Down", hits.len()));
+                    self.info(format!("{} found", hits.len()));
                     self.new.search = Some(SearchResults {
                         hub,
                         query,

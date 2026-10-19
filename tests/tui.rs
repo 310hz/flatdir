@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use common::Sandbox;
 use flatdir::context::Context;
+use flatdir::create::{Hub, Recipe};
 use flatdir::tui::preview::{self, PreviewMode, Shown};
 use flatdir::tui::ui::{self, PreviewCache};
 use flatdir::tui::{App, ListKind, Outcome};
@@ -1153,27 +1154,49 @@ fn a_word_without_a_slash_is_searched_and_a_result_is_cloned() {
 }
 
 #[test]
-fn editing_the_query_or_the_kind_drops_stale_results() {
-    let (_sb, ctx, mut app) = setup();
+fn search_results_lock_the_name_until_esc_clears_them() {
+    let (sb, ctx, mut app) = setup();
     app.on_key(&ctx, ctrl('n'));
     choose_kind(&mut app, &ctx, 2);
     type_name(&mut app, &ctx, "tool");
     app.on_key(&ctx, key(KeyCode::Enter));
     app.wait_for_job(&ctx);
-    assert!(app.new.hits_for(&app.query).is_some());
+    assert!(app.new.results().is_some());
 
-    type_name(&mut app, &ctx, "s");
-    assert!(
-        app.new.hits_for(&app.query).is_none(),
-        "results belong to the old word"
-    );
+    // Nothing edits the searched word or the kind while its results are on screen.
+    type_name(&mut app, &ctx, "xs");
     app.on_key(&ctx, key(KeyCode::Backspace));
-    assert!(app.new.hits_for(&app.query).is_some());
-    choose_kind(&mut app, &ctx, 1);
-    assert!(
-        app.new.hits_for(&app.query).is_none(),
-        "results belong to another hub"
-    );
+    app.on_key(&ctx, ctrl('u'));
+    app.on_key(&ctx, key(KeyCode::Tab));
+    app.on_paste(&ctx, "pasted");
+    assert_eq!(app.query, "tool");
+    assert_eq!(app.new.recipe(), Recipe::Clone(Hub::GitHub));
+    assert!(app.new.results().is_some(), "the results stay");
+    let text = screen(&render(&mut app, 100, 24));
+    assert!(text.contains("someone/found-one"), "{text}");
+
+    // j / k move like Down / Up, and stop at both ends.
+    for (k, expected) in [('j', 1), ('j', 1), ('k', 0), ('k', 0)] {
+        app.on_key(&ctx, key(KeyCode::Char(k)));
+        assert_eq!(app.new.results().unwrap().cursor, expected, "{k}");
+    }
+
+    // Esc clears the results and gives the name back; a second Esc leaves the New view.
+    app.on_key(&ctx, key(KeyCode::Esc));
+    assert!(app.new.open && app.new.results().is_none());
+    type_name(&mut app, &ctx, "s");
+    assert_eq!(app.query, "tools");
+    app.on_key(&ctx, key(KeyCode::Esc));
+    assert!(!app.new.open);
+    assert_eq!(sb.forge.calls(), ["search GitHub tool"]);
+}
+
+#[test]
+fn without_results_j_and_k_are_just_letters() {
+    let (_sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    type_name(&mut app, &ctx, "jk");
+    assert_eq!(app.query, "jk");
 }
 
 #[test]

@@ -86,7 +86,7 @@ ratatui と端末で文字幅の解釈が割れると、その行の残りがず
 - Enter の動作は入力で決まり(`create::plan`)、その内容を Enter の前に画面に出す(エラーなら赤で理由)。
   - Directory: `<root>/<name>` を作る(同期)。
   - Git (private): `gh repo create --private` → clone → 空の README で初回コミットと push(旧 `init --git` と同じ手順)。
-  - Clone: URL か `owner/name` ならそのまま clone。`/` を含まなければ検索し、結果を ↑↓ で選んで Enter で clone。検索結果は、検索した語と種類が今の入力と同じ間だけ有効(`NewForm::hits_for`)。
+  - Clone: URL か `owner/name` ならそのまま clone。`/` を含まなければ検索し、結果を ↑↓(または j / k)で選んで Enter で clone。結果が出ている間は名前と種類を編集できない(入力は薄字になり、カーソルも消える)。Esc で結果を消すと編集に戻り、もう一度 Esc で一覧へ。検索中も編集はできない。以前は「文字を変えると結果が消え、元に戻すと復活する」作りだったが、直感的でないとユーザーが判断し、このロック方式を選んだ(他の案: 古い結果を薄く残す、打つそばから検索する)。
 - 検索は GitHub が `gh search repos --match=name`、Hugging Face は公開 API(`https://huggingface.co/api/{models,datasets,spaces}?search=`、認証不要)を curl で叩く。どちらも 30 件、HF は likes 順。
 - LFS: HF の clone のときだけ `Ctrl+L` で切り替え。既定はスキップ(`GIT_LFS_SKIP_SMUDGE=1`。ポインタだけ置く)。モデルの重みは数十 GB になり得るため(ユーザー指示で選択式に)。
 - 行き先が root かアーカイブに既にあれば拒否。上書きはしない。

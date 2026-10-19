@@ -147,10 +147,11 @@ fn help_items(app: &App) -> Vec<(&'static str, &'static str)> {
         return vec![
             ("Tab / Shift+Tab", "Choose Kind"),
             ("Enter", "Create / Search / Clone"),
-            ("Up / Down", "Choose Search Result"),
+            ("Up / Down, j / k", "Choose Search Result"),
             ("Ctrl+L", "Toggle LFS: On/Off"),
             ("Ctrl+U", "Clear Name"),
-            ("Esc / Ctrl+N", "Back to List"),
+            ("Esc", "Edit Search, or Back to List"),
+            ("Ctrl+N", "Back to List"),
             ("Ctrl+C", "Quit"),
         ];
     }
@@ -210,13 +211,19 @@ fn draw_help(frame: &mut Frame, app: &App) {
 
 fn draw_query(frame: &mut Frame, app: &App, area: Rect) {
     let prompt = if app.new.open { "+ " } else { "> " };
+    // Locked by search results: dimmed and without a cursor, since typing does nothing.
+    let locked = app.new.open && app.new.results().is_some();
+    let query_style = if locked { dim() } else { Style::default() };
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(prompt, bold()),
-            Span::raw(app.query.clone()),
+            Span::styled(app.query.clone(), query_style),
         ])),
         area,
     );
+    if locked {
+        return;
+    }
     let x = area.x
         + (prompt.width() + app.query.width()).min(area.width.saturating_sub(1) as usize) as u16;
     frame.set_cursor_position(Position::new(x, area.y));
@@ -279,11 +286,11 @@ fn draw_new(frame: &mut Frame, app: &App, area: Rect) {
         None => Line::default(),
     });
 
-    if let Some(results) = new.hits_for(&app.query) {
+    if let Some(results) = new.results() {
         lines.push(Line::default());
         lines.push(Line::from(vec![
             Span::styled(format!("  {} results", results.hub.label()), bold()),
-            Span::styled("  Up / Down", dim()),
+            Span::styled("  Up / Down, j / k   Esc Edit Search", dim()),
         ]));
         let room = (area.height as usize).saturating_sub(lines.len());
         let offset = (results.cursor + 1).saturating_sub(room);
