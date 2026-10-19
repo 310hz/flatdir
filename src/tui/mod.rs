@@ -23,7 +23,7 @@ use std::sync::Arc;
 use crate::context::Context;
 use crate::guard;
 
-pub use app::{Action, App, ListKind, Outcome, Status};
+pub use app::{App, ListKind, Outcome, Status};
 pub use preview::{PreviewMode, Shown};
 
 /// Draws on stderr: stdout is reserved for the selected path, which the shell wrapper captures.

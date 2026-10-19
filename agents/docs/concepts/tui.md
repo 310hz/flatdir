@@ -10,13 +10,13 @@
 | `Enter` | 現在行のパスを出力して終了(Tracked ならプロジェクト、Archived ならアーカイブ先) |
 | `Tab` / `Shift+Tab` | 現在行にマークを付け外しして下/上へ |
 | `Ctrl+A` | Tracked / Archived の切り替え。マークとアクションはリセット |
-| `Ctrl+R` | 現在のアクションを、マーク済み(無ければ現在行)に実行 |
-| `Ctrl+T` | アクションの切り替え: Archive(Archived 側では Restore) ⇄ Remove(ゴミ箱) |
+| `Ctrl+T` | マーク済み(無ければ現在行)のアーカイブ状態を反転: Tracked ではアーカイブ、Archived では復元 |
+| `Ctrl+R` | マーク済み(無ければ現在行)をゴミ箱へ(両方の一覧で有効) |
 | `Ctrl+O` | 現在行のディレクトリをファイルマネージャで開く(macOS は `open`=Finder、他は `xdg-open`)。何も変更しない |
 | `Ctrl+P` | プレビュー切り替え: README(Markdown)⇄ ツリー。README が無ければツリーに自動フォールバック |
 | `Esc` / `Ctrl+C` | 終了 |
 
-ユーザー仕様の「Ctrl+R: Remove」「Ctrl+T: アーカイブか Remove かの切り替え」は、「Ctrl+R が現在のアクションを実行し、Ctrl+T がその種類を切り替える」と解釈した。既定は安全側(Archive/Restore)で、実行後は必ず戻る。Remove は赤の反転表示で常に明示される。
+Ctrl+R(ゴミ箱)と Ctrl+T(アーカイブ/復元)は、どちらもモード無しの 1 キー操作。当初「Ctrl+R で実行、Ctrl+T で Archive⇄Remove のモード切替」と解釈して実装したが、ユーザーの意図と違ったため改めた。色は使わない(エラー行の赤とマークの色のみ)。
 
 ## 構成と一般化の方針
 

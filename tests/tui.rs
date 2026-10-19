@@ -10,7 +10,7 @@ use common::Sandbox;
 use flatdir::context::Context;
 use flatdir::tui::preview::{self, PreviewMode, Shown};
 use flatdir::tui::ui::{self, PreviewCache};
-use flatdir::tui::{Action, App, ListKind, Outcome};
+use flatdir::tui::{App, ListKind, Outcome};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -45,9 +45,9 @@ fn setup() -> (Sandbox, Context, App) {
 }
 
 #[test]
-fn starts_on_the_tracked_list_in_name_order_with_the_safe_action() {
+fn starts_on_the_tracked_list_in_name_order() {
     let (_sb, _ctx, app) = setup();
-    assert_eq!((app.kind, app.action), (ListKind::Tracked, Action::Safe));
+    assert_eq!(app.kind, ListKind::Tracked);
     assert_eq!(shown(&app), ["alpha", "beta", "gamma"]);
 }
 
@@ -121,16 +121,9 @@ fn tab_marks_and_moves_and_ctrl_a_resets_marks() {
         "Shift+Tab marks too and moves up"
     );
 
-    app.on_key(&ctx, ctrl('t'));
-    assert_eq!(app.action, Action::Remove);
     app.on_key(&ctx, ctrl('a'));
     assert_eq!(app.kind, ListKind::Archived);
     assert!(app.marks.is_empty(), "marks reset when the list changes");
-    assert_eq!(
-        app.action,
-        Action::Safe,
-        "the destructive action never carries over"
-    );
 }
 
 #[test]
@@ -153,9 +146,9 @@ fn the_archive_is_read_only_when_first_needed() {
 }
 
 #[test]
-fn ctrl_r_archives_the_current_entry_when_nothing_is_marked() {
+fn ctrl_t_archives_the_current_entry_when_nothing_is_marked() {
     let (sb, ctx, mut app) = setup();
-    app.on_key(&ctx, ctrl('r'));
+    app.on_key(&ctx, ctrl('t'));
     assert_eq!(sb.names(&sb.archive_dir()), ["alpha"]);
     assert_eq!(shown(&app), ["beta", "gamma"], "the list is refreshed");
     assert!(
@@ -166,21 +159,21 @@ fn ctrl_r_archives_the_current_entry_when_nothing_is_marked() {
 }
 
 #[test]
-fn ctrl_r_archives_all_marked_entries() {
+fn ctrl_t_archives_all_marked_entries() {
     let (sb, ctx, mut app) = setup();
     app.on_key(&ctx, key(KeyCode::Tab));
     app.on_key(&ctx, key(KeyCode::Tab));
-    app.on_key(&ctx, ctrl('r'));
+    app.on_key(&ctx, ctrl('t'));
     assert_eq!(sb.names(&sb.archive_dir()), ["alpha", "beta"]);
     assert_eq!(shown(&app), ["gamma"]);
     assert!(app.marks.is_empty());
 }
 
 #[test]
-fn ctrl_r_reports_leftovers_instead_of_deleting_them() {
+fn ctrl_t_reports_leftovers_instead_of_deleting_them() {
     let (sb, ctx, mut app) = setup();
     fs::create_dir_all(sb.root.join("alpha/node_modules")).unwrap();
-    app.on_key(&ctx, ctrl('r'));
+    app.on_key(&ctx, ctrl('t'));
     assert!(sb.archive_dir().join("alpha/node_modules").is_dir());
     assert!(
         app.status
@@ -192,49 +185,36 @@ fn ctrl_r_reports_leftovers_instead_of_deleting_them() {
 }
 
 #[test]
-fn marking_every_entry_is_refused_and_nothing_moves() {
+fn marking_every_entry_is_refused_by_both_keys_and_nothing_moves() {
     let (sb, ctx, mut app) = setup();
     for _ in 0..3 {
         app.on_key(&ctx, key(KeyCode::Tab));
     }
     assert_eq!(app.marks.len(), 3);
-    app.on_key(&ctx, ctrl('r'));
-    assert!(app.status.as_ref().unwrap().is_error);
-    assert!(
-        app.status
-            .as_ref()
-            .unwrap()
-            .text
-            .contains("every candidate")
-    );
-    assert_eq!(
-        sb.names(&sb.root),
-        [".hidden", "alpha", "beta", "file.txt", "gamma"]
-    );
 
-    app.on_key(&ctx, ctrl('t'));
-    app.on_key(&ctx, ctrl('r'));
-    assert!(
-        sb.names(&sb.trash_dir).is_empty(),
-        "the same guard covers removal"
-    );
+    for k in ['t', 'r'] {
+        app.on_key(&ctx, ctrl(k));
+        let status = app.status.as_ref().unwrap();
+        assert!(
+            status.is_error && status.text.contains("every candidate"),
+            "Ctrl+{k}"
+        );
+        assert_eq!(
+            sb.names(&sb.root),
+            [".hidden", "alpha", "beta", "file.txt", "gamma"]
+        );
+        assert!(sb.names(&sb.trash_dir).is_empty() && !sb.archive_dir().exists());
+    }
 }
 
 #[test]
-fn removal_needs_the_toggle_and_the_action_resets_afterwards() {
+fn ctrl_r_moves_the_current_entry_to_the_trash_and_refreshes_the_list() {
     let (sb, ctx, mut app) = setup();
     app.on_key(&ctx, key(KeyCode::Down));
-    app.on_key(&ctx, ctrl('t'));
-    assert_eq!(app.action, Action::Remove);
     app.on_key(&ctx, ctrl('r'));
 
     assert_eq!(sb.names(&sb.trash_dir), ["0-beta"]);
     assert_eq!(shown(&app), ["alpha", "gamma"]);
-    assert_eq!(
-        app.action,
-        Action::Safe,
-        "the next Ctrl+R is a safe archive again"
-    );
     assert!(
         app.status
             .as_ref()
@@ -242,10 +222,11 @@ fn removal_needs_the_toggle_and_the_action_resets_afterwards() {
             .text
             .starts_with("moved to trash: beta")
     );
+    assert!(!sb.archive_dir().exists(), "Ctrl+R never archives");
 
-    // The cursor stayed on the same row, which is now gamma.
-    app.on_key(&ctx, ctrl('r'));
-    assert!(sb.archive_dir().join("gamma").is_dir(), "back to archiving");
+    // The cursor stayed on the same row, which is now gamma; Ctrl+T then archives it.
+    app.on_key(&ctx, ctrl('t'));
+    assert!(sb.archive_dir().join("gamma").is_dir());
     assert_eq!(
         sb.names(&sb.trash_dir),
         ["0-beta"],
@@ -254,36 +235,61 @@ fn removal_needs_the_toggle_and_the_action_resets_afterwards() {
 }
 
 #[test]
-fn ctrl_r_in_the_archived_list_restores_and_remove_trashes_from_the_archive() {
+fn ctrl_r_trashes_every_marked_entry() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, key(KeyCode::Tab));
+    app.on_key(&ctx, key(KeyCode::Tab));
+    app.on_key(&ctx, ctrl('r'));
+    assert_eq!(sb.names(&sb.trash_dir), ["0-alpha", "1-beta"]);
+    assert_eq!(shown(&app), ["gamma"]);
+    assert!(app.marks.is_empty());
+}
+
+#[test]
+fn in_the_archived_list_ctrl_t_restores_and_ctrl_r_trashes() {
     let (sb, ctx, mut app) = setup();
     for d in ["old1", "old2", "old3"] {
         fs::create_dir_all(sb.archive_dir().join(d)).unwrap();
     }
     app.on_key(&ctx, ctrl('a'));
-    app.on_key(&ctx, ctrl('r'));
+    app.on_key(&ctx, ctrl('t'));
     assert_eq!(
         sb.names(&sb.root),
         [".hidden", "alpha", "beta", "file.txt", "gamma", "old1"]
     );
     assert_eq!(shown(&app), ["old2", "old3"]);
+    assert!(
+        app.status
+            .as_ref()
+            .unwrap()
+            .text
+            .starts_with("restored: old1")
+    );
 
-    app.on_key(&ctx, ctrl('t'));
     app.on_key(&ctx, ctrl('r'));
     assert_eq!(sb.names(&sb.trash_dir), ["0-old2"]);
     assert_eq!(sb.names(&sb.archive_dir()), ["old3"]);
+    assert_eq!(
+        sb.names(&sb.root)
+            .iter()
+            .filter(|n| n.starts_with("old"))
+            .count(),
+        1,
+        "trashed, not restored"
+    );
 }
 
 #[test]
 fn pasted_text_is_data_and_never_triggers_commands() {
     let (sb, ctx, mut app) = setup();
-    // Ctrl+T (0x14) and Ctrl+R (0x12) inside a paste must not act as shortcuts.
+    // Ctrl+T (0x14, archive) and Ctrl+R (0x12, trash) inside a paste must not act as shortcuts.
     app.on_paste("al\x14\x12pha\n");
     assert_eq!(app.query, "alpha");
-    assert_eq!(app.action, Action::Safe);
     assert_eq!(
         sb.names(&sb.root),
         [".hidden", "alpha", "beta", "file.txt", "gamma"]
     );
+    assert!(sb.names(&sb.trash_dir).is_empty() && !sb.archive_dir().exists());
     let _ = ctx;
 }
 
@@ -372,23 +378,17 @@ fn screen(buffer: &ratatui::buffer::Buffer) -> String {
 }
 
 #[test]
-fn the_header_lists_the_shortcuts_and_the_current_action() {
+fn the_header_lists_the_shortcuts_and_what_ctrl_t_does_in_each_list() {
     let (_sb, ctx, mut app) = setup();
-    let text = screen(&render(&mut app, 110, 20));
+    let text = screen(&render(&mut app, 120, 20));
     for expected in [
-        "Tracked", "Archived", "Enter", "Tab", "Ctrl+A", "Ctrl+R", "Archive", "Ctrl+T", "Ctrl+P",
-        "Esc",
+        "Tracked", "Archived", "Enter", "Tab", "Ctrl+A", "Ctrl+T", "Archive", "Ctrl+R", "Trash",
+        "Ctrl+O", "Ctrl+P", "Esc",
     ] {
         assert!(text.contains(expected), "missing {expected:?}:\n{text}");
     }
-    app.on_key(&ctx, ctrl('t'));
-    let text = screen(&render(&mut app, 110, 20));
-    assert!(
-        text.contains("REMOVE (to Trash)") && text.contains("REMOVE mode"),
-        "{text}"
-    );
     app.on_key(&ctx, ctrl('a'));
-    let text = screen(&render(&mut app, 110, 20));
+    let text = screen(&render(&mut app, 120, 20));
     assert!(text.contains("Restore"), "{text}");
 }
 
@@ -426,7 +426,6 @@ fn only_terminal_palette_colors_are_ever_used() {
     )
     .unwrap();
     app.on_key(&ctx, key(KeyCode::Tab));
-    app.on_key(&ctx, ctrl('t'));
     app.status = Some(flatdir_status_error());
 
     for mode_toggle in [false, true] {
@@ -573,7 +572,7 @@ fn the_shortcut_line_wraps_on_narrow_terminals_without_losing_keys() {
     for width in [40, 60, 80, 100] {
         let text = screen(&render(&mut app, width, 24));
         for expected in [
-            "Enter", "Ctrl+A", "Ctrl+R", "Ctrl+T", "Ctrl+O", "Ctrl+P", "Esc quit",
+            "Enter", "Ctrl+A", "Ctrl+T", "Ctrl+R", "Ctrl+O", "Ctrl+P", "Esc", "quit",
         ] {
             assert!(
                 text.contains(expected),

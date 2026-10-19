@@ -1,5 +1,5 @@
 //! Runs the real binary inside a pseudo-terminal with a throwaway HOME and a rebuilt environment.
-//! Removal to the trash is not driven here: the real trash lives outside the sandbox.
+//! Never send Ctrl+R (0x12, move to trash) here: the real trash lives outside the sandbox.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -191,7 +191,7 @@ fn enter_prints_the_path_of_the_current_directory() {
         text.contains(sb.root.join("alpha").to_str().unwrap()),
         "{text}"
     );
-    for expected in ["Ctrl+A", "Ctrl+R", "Ctrl+T", "Ctrl+P"] {
+    for expected in ["Ctrl+A", "Ctrl+T", "Ctrl+R", "Ctrl+P"] {
         assert!(text.contains(expected), "header lacks {expected}");
     }
 }
@@ -213,16 +213,16 @@ fn zoxide_score_decides_the_order_after_the_first_frame() {
 }
 
 #[test]
-fn ctrl_r_archives_and_ctrl_a_then_ctrl_r_restores() {
+fn ctrl_t_archives_and_ctrl_a_then_ctrl_t_restores() {
     let sb = Sandbox::new();
     sb.track();
     fs::write(sb.root.join("alpha/keep.txt"), "x").unwrap();
 
-    sb.run_in_pty(&[], &[], "alpha", "\x12|\x03");
+    sb.run_in_pty(&[], &[], "alpha", "\x14|\x03");
     assert_eq!(sb.names(&sb.root), ["beta"]);
     assert!(sb.archive_dir().join("alpha/keep.txt").is_file());
 
-    sb.run_in_pty(&[], &[], "beta", "\x01|\x12|\x03");
+    sb.run_in_pty(&[], &[], "beta", "\x01|\x14|\x03");
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
     assert!(sb.root.join("alpha/keep.txt").is_file());
     assert!(sb.names(&sb.archive_dir()).is_empty());
@@ -233,25 +233,16 @@ fn tab_marks_several_rows_for_one_action() {
     let sb = Sandbox::new();
     fs::create_dir_all(sb.root.join("gamma")).unwrap();
     sb.track();
-    sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x12|\x03");
+    sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x14|\x03");
     assert_eq!(sb.names(&sb.root), ["gamma"]);
     assert_eq!(sb.names(&sb.archive_dir()), ["alpha", "beta"]);
-}
-
-#[test]
-fn ctrl_t_shows_remove_mode_without_removing_anything() {
-    let sb = Sandbox::new();
-    sb.track();
-    let text = sb.run_in_pty(&[], &[], "alpha", "\x14|\x14|\x03");
-    assert!(text.contains("REMOVE"), "{text}");
-    assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
 }
 
 #[test]
 fn typed_text_filters_and_a_paste_cannot_trigger_shortcuts() {
     let sb = Sandbox::new();
     sb.track();
-    let text = sb.run_in_pty(&[], &[], "alpha", "\x1b[200~\x12\x14\x12\x1b[201~|\x03");
+    let text = sb.run_in_pty(&[], &[], "alpha", "\x1b[200~\x14\x14\x1b[201~|\x03");
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"], "{text}");
     assert!(sb.names(&sb.archive_dir()).is_empty());
 }
@@ -309,7 +300,7 @@ fn the_screen_uses_only_palette_colors() {
         "# Title\n\n`code` **bold**\n",
     )
     .unwrap();
-    let text = sb.run_in_pty(&[], &[], "alpha", "\t|\x14|\x03");
+    let text = sb.run_in_pty(&[], &[], "alpha", "\t|\x03");
     assert!(
         text.contains("\x1b[7m"),
         "expected reverse video for the current row"

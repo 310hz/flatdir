@@ -21,12 +21,12 @@ pub enum ListKind {
     Archived,
 }
 
-/// What Ctrl+R does. `Safe` is archive in the tracked list and restore in the archived list;
-/// `Remove` moves to the trash. It always returns to `Safe` after running, so every removal is deliberate.
+/// Ctrl+R moves to the trash. Ctrl+T toggles the archived state: archive in the tracked list,
+/// restore in the archived list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
-    Safe,
-    Remove,
+enum Op {
+    Trash,
+    ToggleArchived,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -50,7 +50,6 @@ pub struct View {
 
 pub struct App {
     pub kind: ListKind,
-    pub action: Action,
     pub preview_mode: PreviewMode,
     pub query: String,
     pub cursor: usize,
@@ -70,7 +69,6 @@ impl App {
         let tracked = candidates::list_children(ctx.root()?)?;
         let mut app = Self {
             kind: ListKind::Tracked,
-            action: Action::Safe,
             preview_mode: PreviewMode::Markdown,
             query: String::new(),
             cursor: 0,
@@ -147,16 +145,9 @@ impl App {
                 };
             }
             (KeyCode::Char('a'), true) => self.toggle_list(ctx),
-            (KeyCode::Char('t'), true) => {
-                self.action = if self.action == Action::Safe {
-                    Action::Remove
-                } else {
-                    Action::Safe
-                };
-                self.status = None;
-            }
+            (KeyCode::Char('t'), true) => self.execute(ctx, Op::ToggleArchived),
             (KeyCode::Char('p'), true) => self.preview_mode = self.preview_mode.toggled(),
-            (KeyCode::Char('r'), true) => self.execute(ctx),
+            (KeyCode::Char('r'), true) => self.execute(ctx, Op::Trash),
             (KeyCode::Char('o'), true) => self.open_current(ctx),
             (KeyCode::Char('u'), true) => {
                 self.query.clear();
@@ -207,7 +198,6 @@ impl App {
             }
         }
         self.kind = next;
-        self.action = Action::Safe;
         self.marks.clear();
         self.cursor = 0;
         self.offset = 0;
@@ -215,7 +205,7 @@ impl App {
         self.refilter();
     }
 
-    fn execute(&mut self, ctx: &Context) {
+    fn execute(&mut self, ctx: &Context, op: Op) {
         let list = self.list();
         let targets: Vec<Entry> = if self.marks.is_empty() {
             self.current().cloned().into_iter().collect()
@@ -232,13 +222,12 @@ impl App {
             return self.fail(e);
         }
 
-        let result = self.run_action(ctx, &targets);
+        let result = self.run_op(ctx, op, &targets);
         match result {
             Ok(message) => {
-                if self.action == Action::Remove && ctx.config.sound {
+                if op == Op::Trash && ctx.config.sound {
                     play_trash_sound();
                 }
-                self.action = Action::Safe;
                 self.marks.clear();
                 self.reload(ctx);
                 self.info(message);
@@ -258,10 +247,10 @@ impl App {
         }
     }
 
-    fn run_action(&self, ctx: &Context, targets: &[Entry]) -> anyhow::Result<String> {
+    fn run_op(&self, ctx: &Context, op: Op, targets: &[Entry]) -> anyhow::Result<String> {
         let names = |v: Vec<String>| v.join(", ");
-        Ok(match (self.kind, self.action) {
-            (ListKind::Tracked, Action::Safe) => {
+        Ok(match (self.kind, op) {
+            (ListKind::Tracked, Op::ToggleArchived) => {
                 let moved = ops::archive(ctx, targets)?;
                 let notes: Vec<String> = moved
                     .iter()
@@ -277,21 +266,21 @@ impl App {
                 }
                 msg
             }
-            (ListKind::Archived, Action::Safe) => {
+            (ListKind::Archived, Op::ToggleArchived) => {
                 let moved = ops::restore(ctx, targets)?;
                 format!(
                     "restored: {}",
                     names(moved.into_iter().map(|m| m.name).collect())
                 )
             }
-            (ListKind::Tracked, Action::Remove) => {
+            (ListKind::Tracked, Op::Trash) => {
                 let root = ctx.root()?.to_path_buf();
                 format!(
                     "moved to trash: {}",
                     names(ops::remove(ctx, targets, &root)?)
                 )
             }
-            (ListKind::Archived, Action::Remove) => {
+            (ListKind::Archived, Op::Trash) => {
                 let base = ctx.archive_base()?;
                 format!(
                     "moved to trash: {}",

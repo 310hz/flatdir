@@ -10,13 +10,12 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
 
-use super::app::{Action, App, ListKind};
+use super::app::{App, ListKind};
 use super::preview::{self, PreviewMode, Shown};
 use super::text;
 
 const MIN_WIDTH_FOR_PREVIEW: u16 = 70;
 pub const MARK_COLOR: Color = Color::Magenta;
-pub const SAFE_COLOR: Color = Color::Green;
 pub const DANGER_COLOR: Color = Color::Red;
 
 #[derive(Default)]
@@ -65,11 +64,11 @@ fn bold() -> Style {
     Style::default().add_modifier(Modifier::BOLD)
 }
 
-pub fn action_label(kind: ListKind, action: Action) -> &'static str {
-    match (kind, action) {
-        (ListKind::Tracked, Action::Safe) => "Archive",
-        (ListKind::Archived, Action::Safe) => "Restore",
-        (_, Action::Remove) => "REMOVE (to Trash)",
+/// What Ctrl+T does in the current list.
+pub fn toggle_label(kind: ListKind) -> &'static str {
+    match kind {
+        ListKind::Tracked => "Archive",
+        ListKind::Archived => "Restore",
     }
 }
 
@@ -96,41 +95,31 @@ fn header_lines(app: &App) -> (Line<'static>, Line<'static>) {
         ));
     }
 
-    let (other_list, switch) = match app.kind {
-        ListKind::Tracked => ("Archived", "Archive/Remove"),
-        ListKind::Archived => ("Tracked", "Restore/Remove"),
-    };
-    let action_style = match app.action {
-        Action::Safe => Style::default().fg(SAFE_COLOR).add_modifier(Modifier::BOLD),
-        Action::Remove => Style::default()
-            .fg(DANGER_COLOR)
-            .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+    let other_list = match app.kind {
+        ListKind::Tracked => "Archived",
+        ListKind::Archived => "Tracked",
     };
     let preview_name = match app.preview_mode {
         PreviewMode::Markdown => "Markdown",
         PreviewMode::Tree => "Tree",
     };
     let key = |k: &'static str| Span::styled(k, bold());
+    let hint = |label: String| Span::styled(format!(" {label}   "), dim());
     let hints = Line::from(vec![
         key("Enter"),
-        Span::styled(" cd   ", dim()),
+        hint("cd".into()),
         key("Tab"),
-        Span::styled(" mark   ", dim()),
+        hint("mark".into()),
         key("Ctrl+A"),
-        Span::styled(format!(" {other_list}   "), dim()),
-        key("Ctrl+R"),
-        Span::raw(" "),
-        Span::styled(
-            format!(" {} ", action_label(app.kind, app.action)),
-            action_style,
-        ),
-        Span::raw("   "),
+        hint(other_list.into()),
         key("Ctrl+T"),
-        Span::styled(format!(" {switch}   "), dim()),
+        hint(toggle_label(app.kind).into()),
+        key("Ctrl+R"),
+        hint("Trash".into()),
         key("Ctrl+O"),
-        Span::styled(" open   ", dim()),
+        hint("open".into()),
         key("Ctrl+P"),
-        Span::styled(format!(" preview: {preview_name}   "), dim()),
+        hint(format!("preview: {preview_name}")),
         key("Esc"),
         Span::styled(" quit", dim()),
     ]);
@@ -239,8 +228,8 @@ fn draw_preview(frame: &mut Frame, app: &App, cache: &mut PreviewCache, area: Re
 }
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
-    let line = match (&app.status, app.action) {
-        (Some(s), _) => {
+    let line = match &app.status {
+        Some(s) => {
             let style = if s.is_error {
                 Style::default().fg(DANGER_COLOR)
             } else {
@@ -248,13 +237,7 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
             };
             Line::from(Span::styled(text::sanitize(&s.text).into_owned(), style))
         }
-        (None, Action::Remove) => Line::from(Span::styled(
-            "REMOVE mode: Ctrl+R moves the marked (or current) entries to the Trash. Ctrl+T switches back.",
-            Style::default()
-                .fg(DANGER_COLOR)
-                .add_modifier(Modifier::BOLD),
-        )),
-        (None, Action::Safe) => Line::default(),
+        None => Line::default(),
     };
     frame.render_widget(Paragraph::new(line), area);
 }
