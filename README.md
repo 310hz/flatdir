@@ -34,8 +34,8 @@ flatdir root --unset         # unset it
 | `Enter` | print the path of the current directory (the shell function below `cd`s to it) |
 | `Tab` / `Shift+Tab` | mark the current entry and move down / up |
 | `Ctrl+Q` | clear all marks |
-| `Ctrl+A` | switch between the Tracked and Archived lists (marks are reset) |
-| `Ctrl+T` | toggle the archived state of the marked entries (or the current one): archive in the Tracked list, restore in the Archived list |
+| `Ctrl+A` | switch between the Active and Archived lists (marks are reset) |
+| `Ctrl+T` | toggle the archived state of the marked entries (or the current one): archive in the Active list, restore in the Archived list |
 | `Ctrl+R` | move the marked entries (or the current one) to the Trash |
 | `Ctrl+O` | open the current directory in the file manager (Finder on macOS, `xdg-open` elsewhere) |
 | `Ctrl+P` | switch the preview: README (Markdown) <-> file tree. Without a README the tree is shown |

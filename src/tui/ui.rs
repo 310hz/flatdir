@@ -78,7 +78,7 @@ fn bold() -> Style {
 /// What Ctrl+T does in the current list.
 pub fn toggle_label(kind: ListKind) -> &'static str {
     match kind {
-        ListKind::Tracked => "Archive",
+        ListKind::Active => "Archive",
         ListKind::Archived => "Restore",
     }
 }
@@ -101,7 +101,7 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
     };
     let title = vec![
         Span::styled("flatdir ", bold()),
-        tab("Tracked", app.kind == ListKind::Tracked),
+        tab("Active", app.kind == ListKind::Active),
         Span::raw(" "),
         tab("Archived", app.kind == ListKind::Archived),
         Span::styled(
@@ -115,14 +115,14 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
     ];
 
     let other_list = match app.kind {
-        ListKind::Tracked => "Archived",
-        ListKind::Archived => "Tracked",
+        ListKind::Active => "Archived",
+        ListKind::Archived => "Active",
     };
     let preview_name = match app.preview_mode {
         PreviewMode::Markdown => "Markdown",
         PreviewMode::Tree => "Tree",
     };
-    let other_list = pad_to_longest(other_list, &["Archived", "Tracked"]);
+    let other_list = pad_to_longest(other_list, &["Archived", "Active"]);
     let toggle = pad_to_longest(toggle_label(app.kind), &["Archive", "Restore"]);
     let preview_name = pad_to_longest(preview_name, &["Markdown", "Tree"]);
     let item = |key: &'static str, label: String| {

@@ -7,11 +7,11 @@
 | キー | 動作 |
 |---|---|
 | 文字入力 | ファジー絞り込み(nucleo-matcher)。`Ctrl+U` で消去 |
-| `Enter` | 現在行のパスを出力して終了(Tracked ならプロジェクト、Archived ならアーカイブ先) |
+| `Enter` | 現在行のパスを出力して終了(Active ならプロジェクト、Archived ならアーカイブ先) |
 | `Tab` / `Shift+Tab` | 現在行にマークを付け外しして下/上へ |
 | `Ctrl+Q` | すべてのマークを解除(カーソルや一覧はそのまま。マークが無ければ何もしない) |
-| `Ctrl+A` | Tracked / Archived の切り替え。マークとアクションはリセット |
-| `Ctrl+T` | マーク済み(無ければ現在行)のアーカイブ状態を反転: Tracked ではアーカイブ、Archived では復元 |
+| `Ctrl+A` | Active / Archived の切り替え。マークとアクションはリセット |
+| `Ctrl+T` | マーク済み(無ければ現在行)のアーカイブ状態を反転: Active ではアーカイブ、Archived では復元 |
 | `Ctrl+R` | マーク済み(無ければ現在行)をゴミ箱へ(両方の一覧で有効) |
 | `Ctrl+O` | 現在行のディレクトリをファイルマネージャで開く(macOS は `open`=Finder、他は `xdg-open`)。何も変更しない |
 | `Ctrl+P` | プレビュー切り替え: README(Markdown)⇄ ツリー。README が無ければツリーに自動フォールバック |
@@ -67,6 +67,6 @@ ratatui と端末で文字幅の解釈が割れると、その行の残りがず
 
 モードが変わるたびにヘッダの項目が動いたり行数が変わったりすると、下の内容が上下してしまう。
 
-- モードで変わる文言(`Ctrl+A` の行き先 `Archived`/`Tracked`、`Ctrl+T` の `Archive`/`Restore`、プレビュー名 `Markdown`/`Tree`)は、最も長い候補の幅まで空白で埋める(`pad_to_longest`)。件数と「N marked」も固定幅で確保する。その結果、折り返しの行数と各キーの桁がモードによらず一定になる。
+- モードで変わる文言(`Ctrl+A` の行き先 `Archived`/`Active`、`Ctrl+T` の `Archive`/`Restore`、プレビュー名 `Markdown`/`Tree`)は、最も長い候補の幅まで空白で埋める(`pad_to_longest`)。件数と「N marked」も固定幅で確保する。その結果、折り返しの行数と各キーの桁がモードによらず一定になる。
 - ヘッダとクエリ行の間に空き行を 1 行入れる(`draw` のレイアウト)。
 - 回帰テスト: `the_header_keeps_its_layout_when_the_mode_changes`(幅 50〜140 で、モード切替・マーク・両方切替の前後で各キーの位置とリスト開始行が同じ)、`a_blank_row_separates_the_navigation_from_the_query_line`。文言を足すときは、取りうる候補を `pad_to_longest` に全部渡すこと。

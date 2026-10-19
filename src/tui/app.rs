@@ -20,11 +20,11 @@ use super::preview::PreviewMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListKind {
-    Tracked,
+    Active,
     Archived,
 }
 
-/// Ctrl+R moves to the trash. Ctrl+T toggles the archived state: archive in the tracked list,
+/// Ctrl+R moves to the trash. Ctrl+T toggles the archived state: archive in the active list,
 /// restore in the archived list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Op {
@@ -75,7 +75,7 @@ pub struct App {
     pub panes: Panes,
     /// First visible row of the preview. Reset by the UI when the previewed entry or mode changes.
     pub preview_scroll: u16,
-    tracked: Vec<Entry>,
+    active: Vec<Entry>,
     /// Loaded on first use; most sessions never open the archive.
     archived: Option<Vec<Entry>>,
     scores: HashMap<PathBuf, f64>,
@@ -84,9 +84,9 @@ pub struct App {
 
 impl App {
     pub fn new(ctx: &Context) -> anyhow::Result<Self> {
-        let tracked = candidates::list_children(ctx.root()?)?;
+        let active = candidates::list_children(ctx.root()?)?;
         let mut app = Self {
-            kind: ListKind::Tracked,
+            kind: ListKind::Active,
             preview_mode: PreviewMode::Markdown,
             query: String::new(),
             cursor: 0,
@@ -96,7 +96,7 @@ impl App {
             view: Vec::new(),
             panes: Panes::default(),
             preview_scroll: 0,
-            tracked,
+            active,
             archived: None,
             scores: HashMap::new(),
             matcher: Matcher::new(MatcherConfig::DEFAULT),
@@ -107,7 +107,7 @@ impl App {
 
     pub fn list(&self) -> &[Entry] {
         match self.kind {
-            ListKind::Tracked => &self.tracked,
+            ListKind::Active => &self.active,
             ListKind::Archived => self.archived.as_deref().unwrap_or(&[]),
         }
     }
@@ -122,7 +122,7 @@ impl App {
             .then(|| self.current().map(|e| e.path.clone()))
             .flatten();
         self.scores = scores;
-        sort_by_score(&mut self.tracked, &self.scores);
+        sort_by_score(&mut self.active, &self.scores);
         self.refilter();
         if let Some(path) = keep
             && let Some(pos) = self
@@ -275,8 +275,8 @@ impl App {
 
     fn toggle_list(&mut self, ctx: &Context) {
         let next = match self.kind {
-            ListKind::Tracked => ListKind::Archived,
-            ListKind::Archived => ListKind::Tracked,
+            ListKind::Active => ListKind::Archived,
+            ListKind::Archived => ListKind::Active,
         };
         if next == ListKind::Archived && self.archived.is_none() {
             match candidates::archived(ctx) {
@@ -337,7 +337,7 @@ impl App {
     fn run_op(&self, ctx: &Context, op: Op, targets: &[Entry]) -> anyhow::Result<String> {
         let names = |v: Vec<String>| v.join(", ");
         Ok(match (self.kind, op) {
-            (ListKind::Tracked, Op::ToggleArchived) => {
+            (ListKind::Active, Op::ToggleArchived) => {
                 let moved = ops::archive(ctx, targets)?;
                 let notes: Vec<String> = moved
                     .iter()
@@ -360,7 +360,7 @@ impl App {
                     names(moved.into_iter().map(|m| m.name).collect())
                 )
             }
-            (ListKind::Tracked, Op::Trash) => {
+            (ListKind::Active, Op::Trash) => {
                 let root = ctx.root()?.to_path_buf();
                 format!(
                     "moved to trash: {}",
@@ -381,7 +381,7 @@ impl App {
     fn reload(&mut self, ctx: &Context) {
         if let Ok(mut list) = ctx.root().and_then(candidates::list_children) {
             sort_by_score(&mut list, &self.scores);
-            self.tracked = list;
+            self.active = list;
         }
         self.archived = None;
         if self.kind == ListKind::Archived {
@@ -406,7 +406,7 @@ impl App {
 
     fn refilter(&mut self) {
         let list = match self.kind {
-            ListKind::Tracked => &self.tracked[..],
+            ListKind::Active => &self.active[..],
             ListKind::Archived => self.archived.as_deref().unwrap_or(&[]),
         };
         if self.query.is_empty() {

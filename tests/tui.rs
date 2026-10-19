@@ -47,9 +47,9 @@ fn setup() -> (Sandbox, Context, App) {
 }
 
 #[test]
-fn starts_on_the_tracked_list_in_name_order() {
+fn starts_on_the_active_list_in_name_order() {
     let (_sb, _ctx, app) = setup();
-    assert_eq!(app.kind, ListKind::Tracked);
+    assert_eq!(app.kind, ListKind::Active);
     assert_eq!(shown(&app), ["alpha", "beta", "gamma"]);
 }
 
@@ -144,7 +144,7 @@ fn the_archive_is_read_only_when_first_needed() {
         Outcome::Cd(sb.archive_dir().join("old"))
     );
     app.on_key(&ctx, ctrl('a'));
-    assert_eq!(app.kind, ListKind::Tracked);
+    assert_eq!(app.kind, ListKind::Active);
 }
 
 #[test]
@@ -392,7 +392,7 @@ fn the_header_lists_the_shortcuts_and_what_ctrl_t_does_in_each_list() {
     let (_sb, ctx, mut app) = setup();
     let text = screen(&render(&mut app, 120, 20));
     for expected in [
-        "Tracked", "Archived", "Enter", "Tab", "Ctrl+A", "Ctrl+T", "Archive", "Ctrl+R", "Trash",
+        "Active", "Archived", "Enter", "Tab", "Ctrl+A", "Ctrl+T", "Archive", "Ctrl+R", "Trash",
         "Ctrl+O", "Ctrl+P", "Esc",
     ] {
         assert!(text.contains(expected), "missing {expected:?}:\n{text}");
@@ -951,7 +951,7 @@ fn ctrl_q_clears_every_mark_and_nothing_else() {
     assert!(app.marks.is_empty());
     assert_eq!(app.cursor, 2, "the cursor stays where it was");
     assert_eq!(app.status.as_ref().unwrap().text, "unmarked 2");
-    assert_eq!(app.kind, ListKind::Tracked);
+    assert_eq!(app.kind, ListKind::Active);
 
     // Without marks the actions use the current row only, so a reset really does narrow them.
     app.on_key(&ctx, ctrl('t'));

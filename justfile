@@ -14,7 +14,7 @@ check:
     cargo clippy --all-targets -- -D warnings
     cargo test
 
-# Install (or reinstall) into CARGO_HOME/bin. Run by the user, never by an agent.
+# Install (or reinstall) into CARGO_HOME/bin. The user has allowed agents to run this after `just check` passes.
 install:
     cargo install --path . --force
 
