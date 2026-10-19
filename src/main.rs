@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 use flatdir::cmd;
 use flatdir::config::Config;
@@ -23,6 +23,13 @@ struct Cli {
     command: Option<Command>,
 }
 
+/// Shells the function is written for. Both get exactly the same text.
+#[derive(Clone, Copy, ValueEnum)]
+enum Shell {
+    Bash,
+    Zsh,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Show the managed root, or set it with a path (replaces the current one)
@@ -35,7 +42,11 @@ enum Command {
     /// Show the managed root, directory counts and required commands
     Status,
     /// Print the shell function that makes Enter cd (use: eval "$(flatdir shell)")
-    Shell,
+    Shell {
+        /// The same function works in both, so this only exists for habit (`flatdir shell zsh`)
+        #[arg(value_enum)]
+        shell: Option<Shell>,
+    },
     /// Create a new directory under the root
     Init {
         name: String,
@@ -95,7 +106,7 @@ fn run(cli: Cli) -> Result<()> {
             let ctx = context()?;
             println!("{}", ctx.root()?.display());
         }
-        Some(Command::Shell) => print!("{}", flatdir::shell::SHELL_FUNCTION),
+        Some(Command::Shell { .. }) => print!("{}", flatdir::shell::SHELL_FUNCTION),
         Some(Command::Status) => println!("{}", cmd::status(&context()?)),
         Some(Command::Init { name, git }) => {
             let dest = cmd::init(&context()?, &name, git)?;

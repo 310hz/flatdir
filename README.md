@@ -52,7 +52,7 @@ The shortcuts are always shown at the top, and the `Ctrl+T` label says what it w
 `flatdir` only prints the path (a program cannot change its parent shell's directory). To `cd` into the selection, load a small shell function (bash and zsh):
 
 ```sh
-eval "$(flatdir shell)"   # put this in .zshrc / .bashrc
+eval "$(flatdir shell)"   # put this in .zshrc / .bashrc (`flatdir shell zsh` works too)
 ```
 
 It is this function; you can also paste it into your config instead of using `eval`:

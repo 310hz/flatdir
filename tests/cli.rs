@@ -566,6 +566,20 @@ fn the_shell_function_is_printed_and_documented_verbatim() {
         "must call the binary, not itself"
     );
 
+    // Naming the shell is accepted (as with `zoxide init zsh`) and gives the same function.
+    for shell in ["zsh", "bash"] {
+        assert_eq!(
+            String::from_utf8_lossy(&sb.run(&["shell", shell]).stdout),
+            printed,
+            "{shell}"
+        );
+    }
+    let fish = sb.run(&["shell", "fish"]);
+    assert!(
+        !fish.status.success() && fish.stdout.is_empty(),
+        "unsupported shells are an error, not a guess"
+    );
+
     let readme = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md")).unwrap();
     assert!(
         readme.contains(flatdir::shell::SHELL_FUNCTION),
