@@ -582,6 +582,7 @@ fn shortcuts_wrap_only_between_items() {
     let items = [
         "Enter cd",
         "Tab mark",
+        "Ctrl+Q unmark",
         "Ctrl+A Archived",
         "Ctrl+T Archive",
         "Ctrl+R Trash",
@@ -791,8 +792,8 @@ fn find_on_screen(text: &str, needle: &str) -> Option<(usize, usize)> {
 /// everything below it.
 #[test]
 fn the_header_keeps_its_layout_when_the_mode_changes() {
-    const KEYS: [&str; 9] = [
-        "Enter", "Tab", "Ctrl+A", "Ctrl+T", "Ctrl+R", "Ctrl+O", "Ctrl+P", "Esc", ">",
+    const KEYS: [&str; 10] = [
+        "Enter", "Tab", "Ctrl+Q", "Ctrl+A", "Ctrl+T", "Ctrl+R", "Ctrl+O", "Ctrl+P", "Esc", ">",
     ];
     for width in [50, 60, 80, 100, 140] {
         let (sb, ctx, mut app) = setup();
@@ -907,7 +908,7 @@ fn clicking_accounts_for_a_scrolled_list() {
 }
 
 #[test]
-fn right_click_marks_the_clicked_row_like_tab_but_stays_put() {
+fn right_click_marks_the_clicked_row_and_leaves_the_cursor_alone() {
     let (sb, ctx, mut app) = setup();
     render(&mut app, 100, 20);
     let list = app.panes.list;
@@ -915,14 +916,12 @@ fn right_click_marks_the_clicked_row_like_tab_but_stays_put() {
     assert!(click(&mut app, MouseButton::Right, list.x + 3, list.y + 1));
     assert_eq!(app.marks.len(), 1);
     assert!(app.marks.contains(&sb.root.join("beta")));
-    assert_eq!(
-        app.current().unwrap().name,
-        "beta",
-        "the cursor goes to the clicked row, not past it"
-    );
+    assert_eq!(app.cursor, 0, "a right click never moves the cursor");
+    assert_eq!(app.current().unwrap().name, "alpha");
 
     assert!(click(&mut app, MouseButton::Right, list.x + 3, list.y + 2));
     assert_eq!(app.marks.len(), 2);
+    assert_eq!(app.cursor, 0);
 
     assert!(click(&mut app, MouseButton::Right, list.x + 3, list.y + 1));
     assert!(
@@ -939,4 +938,30 @@ fn right_click_marks_the_clicked_row_like_tab_but_stays_put() {
     // Marks made with the mouse are what the keyboard actions use.
     app.on_key(&ctx, ctrl('t'));
     assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
+}
+
+#[test]
+fn ctrl_q_clears_every_mark_and_nothing_else() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, key(KeyCode::Tab));
+    app.on_key(&ctx, key(KeyCode::Tab));
+    assert_eq!((app.marks.len(), app.cursor), (2, 2));
+
+    app.on_key(&ctx, ctrl('q'));
+    assert!(app.marks.is_empty());
+    assert_eq!(app.cursor, 2, "the cursor stays where it was");
+    assert_eq!(app.status.as_ref().unwrap().text, "unmarked 2");
+    assert_eq!(app.kind, ListKind::Tracked);
+
+    // Without marks the actions use the current row only, so a reset really does narrow them.
+    app.on_key(&ctx, ctrl('t'));
+    assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
+    assert_eq!(shown(&app), ["alpha", "beta"]);
+}
+
+#[test]
+fn ctrl_q_without_marks_is_a_quiet_no_op() {
+    let (_sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('q'));
+    assert!(app.marks.is_empty() && app.status.is_none());
 }

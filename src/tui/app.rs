@@ -148,7 +148,7 @@ impl App {
     /// Mouse input, routed by the pane under the pointer:
     /// - wheel over the list moves the cursor, over the preview scrolls it;
     /// - left click on a list row moves the cursor there;
-    /// - right click on a list row marks / unmarks it (what Tab does, without moving on).
+    /// - right click on a list row marks / unmarks it (what Tab does, but the cursor stays put).
     ///
     /// Returns whether the screen needs a redraw: terminals also report plain mouse motion, which
     /// must not cost a redraw each time.
@@ -169,7 +169,6 @@ impl App {
             MouseEventKind::Down(MouseButton::Right) => {
                 return match self.row_at(at) {
                     Some(index) => {
-                        self.cursor = index;
                         self.toggle_mark_at(index);
                         true
                     }
@@ -214,6 +213,7 @@ impl App {
             (KeyCode::Char('p'), true) => self.preview_mode = self.preview_mode.toggled(),
             (KeyCode::Char('r'), true) => self.execute(ctx, Op::Trash),
             (KeyCode::Char('o'), true) => self.open_current(ctx),
+            (KeyCode::Char('q'), true) => self.clear_marks(),
             (KeyCode::Char('u'), true) => {
                 self.query.clear();
                 self.refilter();
@@ -248,6 +248,14 @@ impl App {
             if !self.marks.remove(&path) {
                 self.marks.insert(path);
             }
+        }
+    }
+
+    fn clear_marks(&mut self) {
+        let count = self.marks.len();
+        self.marks.clear();
+        if count > 0 {
+            self.info(format!("unmarked {count}"));
         }
     }
 

@@ -134,6 +134,7 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
     let items = vec![
         item("Enter", "cd".into()),
         item("Tab", "mark".into()),
+        item("Ctrl+Q", "unmark".into()),
         item("Ctrl+A", other_list),
         item("Ctrl+T", toggle),
         item("Ctrl+R", "Trash".into()),

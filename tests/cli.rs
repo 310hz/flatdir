@@ -418,3 +418,14 @@ fn clicking_a_row_moves_the_cursor_and_right_clicking_marks_it() {
     assert_eq!(sb.names(&sb.root), ["alpha", "gamma"]);
     assert_eq!(sb.names(&sb.archive_dir()), ["beta"]);
 }
+
+#[test]
+fn ctrl_q_resets_the_marks_before_an_action() {
+    let sb = Sandbox::new();
+    fs::create_dir_all(sb.root.join("gamma")).unwrap();
+    sb.track();
+    // Mark alpha and beta (the cursor ends on gamma), reset with Ctrl+Q, then archive: only gamma moves.
+    sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x11|\x14|\x03");
+    assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
+    assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
+}

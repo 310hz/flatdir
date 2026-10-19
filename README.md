@@ -32,6 +32,7 @@ flatdir untrack              # unset the managed root
 | `Up` / `Down`, `PageUp` / `PageDown` | move |
 | `Enter` | print the path of the current directory (the shell function below `cd`s to it) |
 | `Tab` / `Shift+Tab` | mark the current entry and move down / up |
+| `Ctrl+Q` | clear all marks |
 | `Ctrl+A` | switch between the Tracked and Archived lists (marks are reset) |
 | `Ctrl+T` | toggle the archived state of the marked entries (or the current one): archive in the Tracked list, restore in the Archived list |
 | `Ctrl+R` | move the marked entries (or the current one) to the Trash |
@@ -40,7 +41,7 @@ flatdir untrack              # unset the managed root
 | `Ctrl+U` | clear the filter |
 | mouse wheel | over the list: move the cursor; over the preview: scroll it |
 | left click | on a list row: move the cursor there |
-| right click | on a list row: mark / unmark it (like `Tab`, without moving on) |
+| right click | on a list row: mark / unmark it (like `Tab`, but the cursor does not move) |
 | `Esc` / `Ctrl+C` | quit |
 
 While the TUI is open the terminal reports the mouse to flatdir, so selecting text with the mouse needs `Shift` (or `Option` in some terminals) held down.
