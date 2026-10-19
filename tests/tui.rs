@@ -13,7 +13,9 @@ use flatdir::tui::ui::{self, PreviewCache};
 use flatdir::tui::{App, ListKind, Outcome};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{
+    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::style::Color;
 
 fn key(code: KeyCode) -> KeyEvent {
@@ -361,10 +363,18 @@ fn tree_preview_shows_structure_and_skips_hidden_and_ignored_files() {
     );
 }
 
+thread_local! {
+    /// Like the real event loop, keep the preview cache across frames (each test runs on its own thread).
+    static CACHE: std::cell::RefCell<PreviewCache> = std::cell::RefCell::new(PreviewCache::default());
+}
+
 fn render(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-    let mut cache = PreviewCache::default();
-    terminal.draw(|f| ui::draw(f, app, &mut cache)).unwrap();
+    CACHE.with(|cache| {
+        terminal
+            .draw(|f| ui::draw(f, app, &mut cache.borrow_mut()))
+            .unwrap();
+    });
     terminal.backend().buffer().clone()
 }
 
@@ -632,4 +642,139 @@ fn the_preview_keeps_a_gap_from_the_vertical_line() {
         checked >= 4,
         "the tree was drawn ({checked} rows with content)"
     );
+}
+
+/// Returns whether the app asked for a redraw.
+fn wheel(app: &mut App, down: bool, column: u16, row: u16) -> bool {
+    let kind = if down {
+        MouseEventKind::ScrollDown
+    } else {
+        MouseEventKind::ScrollUp
+    };
+    app.on_mouse(MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    })
+}
+
+fn long_readme(sb: &Sandbox) {
+    let text: String = (0..60).map(|i| format!("line {i}\n\n")).collect();
+    fs::write(sb.root.join("alpha/README.md"), text).unwrap();
+}
+
+#[test]
+fn the_wheel_over_the_list_moves_the_cursor_and_over_the_preview_scrolls_it() {
+    let (sb, _ctx, mut app) = setup();
+    long_readme(&sb);
+    render(&mut app, 100, 20);
+    let panes = app.panes;
+    let preview = panes.preview.expect("wide terminals have a preview");
+    assert!(
+        panes.list.right() <= preview.left(),
+        "the panes do not overlap"
+    );
+
+    // Over the preview: the preview scrolls and the cursor stays put.
+    wheel(&mut app, true, preview.x + 5, preview.y + 5);
+    assert_eq!((app.cursor, app.preview_scroll), (0, 3));
+    let text = screen(&render(&mut app, 100, 20));
+    assert!(
+        !text.contains("line 0") && text.contains("line 2"),
+        "{text}"
+    );
+
+    // Over the list: the cursor moves and the preview is untouched.
+    wheel(&mut app, true, panes.list.x + 3, panes.list.y);
+    assert_eq!(app.cursor, 1);
+    wheel(&mut app, false, panes.list.x + 3, panes.list.y);
+    assert_eq!(app.cursor, 0);
+    assert_eq!(
+        app.preview_scroll, 3,
+        "the list wheel does not touch the preview"
+    );
+}
+
+#[test]
+fn the_preview_scroll_resets_when_the_previewed_entry_changes() {
+    let (sb, ctx, mut app) = setup();
+    long_readme(&sb);
+    render(&mut app, 100, 20);
+    let preview = app.panes.preview.unwrap();
+    wheel(&mut app, true, preview.x + 5, preview.y + 5);
+    render(&mut app, 100, 20);
+    assert_eq!(app.preview_scroll, 3);
+
+    app.on_key(&ctx, key(KeyCode::Down));
+    render(&mut app, 100, 20);
+    assert_eq!(app.preview_scroll, 0, "a different entry starts at the top");
+}
+
+#[test]
+fn the_preview_scroll_stops_at_both_ends() {
+    let (sb, _ctx, mut app) = setup();
+    long_readme(&sb);
+    render(&mut app, 100, 20);
+    let preview = app.panes.preview.unwrap();
+    let (x, y) = (preview.x + 5, preview.y + 5);
+
+    wheel(&mut app, false, x, y);
+    assert_eq!(app.preview_scroll, 0, "cannot scroll above the top");
+
+    for _ in 0..200 {
+        wheel(&mut app, true, x, y);
+    }
+    let text = screen(&render(&mut app, 100, 20));
+    assert!(
+        text.contains("line 59"),
+        "the last line is reachable:\n{text}"
+    );
+    let at_bottom = app.preview_scroll;
+    wheel(&mut app, true, x, y);
+    render(&mut app, 100, 20);
+    assert_eq!(app.preview_scroll, at_bottom, "cannot scroll past the end");
+    assert!(
+        at_bottom < 200 * 3,
+        "clamped to the content, not to the wheel count"
+    );
+}
+
+#[test]
+fn the_wheel_elsewhere_and_other_mouse_events_do_nothing() {
+    let (sb, _ctx, mut app) = setup();
+    long_readme(&sb);
+    render(&mut app, 100, 20);
+    assert!(!wheel(&mut app, true, 5, 0), "header: no redraw");
+    assert!(!wheel(&mut app, true, 5, 19), "status line: no redraw");
+    assert_eq!((app.cursor, app.preview_scroll), (0, 0));
+
+    let click = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 5,
+        row: app.panes.list.y,
+        modifiers: KeyModifiers::NONE,
+    };
+    assert!(
+        !app.on_mouse(click),
+        "a click is not handled, so it must not redraw"
+    );
+    let motion = MouseEvent {
+        kind: MouseEventKind::Moved,
+        column: 5,
+        row: app.panes.list.y,
+        modifiers: KeyModifiers::NONE,
+    };
+    assert!(!app.on_mouse(motion), "plain motion must not cost a redraw");
+    assert_eq!((app.cursor, app.preview_scroll), (0, 0));
+}
+
+#[test]
+fn without_a_preview_pane_the_wheel_always_drives_the_list() {
+    let (_sb, _ctx, mut app) = setup();
+    render(&mut app, 50, 20);
+    assert!(app.panes.preview.is_none());
+    let row = app.panes.list.y;
+    wheel(&mut app, true, 45, row);
+    assert_eq!(app.cursor, 1);
 }

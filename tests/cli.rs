@@ -12,6 +12,15 @@ use std::time::{Duration, Instant};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use tempfile::TempDir;
 
+/// macOS vets a freshly written executable the first time it runs, which can take hundreds of
+/// milliseconds when many tests do it at once. Run it once here so the timing-sensitive part of a
+/// test never pays for that.
+fn warm_up(path: &Path) {
+    let _ = Command::new(path)
+        .stdin(std::process::Stdio::null())
+        .output();
+}
+
 struct Sandbox {
     _guard: TempDir,
     tmp: PathBuf,
@@ -46,6 +55,7 @@ impl Sandbox {
         let path = self.tmp.join("bin/zoxide");
         fs::write(&path, body).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        warm_up(&path);
     }
 
     /// Fake `open` / `xdg-open` that only log their argument, so no real file manager is launched.
@@ -56,7 +66,9 @@ impl Sandbox {
             let path = self.tmp.join("bin").join(name);
             fs::write(&path, &body).unwrap();
             fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+            warm_up(&path);
         }
+        let _ = fs::remove_file(&log);
         log
     }
 
@@ -148,7 +160,16 @@ impl Sandbox {
         while !seen(wait_for) && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(50));
         }
-        std::thread::sleep(Duration::from_millis(300));
+        // Late work (zoxide scores arrive on a thread) redraws the screen; wait until the output has
+        // been quiet for a moment instead of guessing a fixed delay, which is racy on a busy machine.
+        let (mut last_len, mut quiet_since) = (0, Instant::now());
+        while quiet_since.elapsed() < Duration::from_millis(250) && Instant::now() < deadline {
+            let len = output.lock().unwrap().len();
+            if len != last_len {
+                (last_len, quiet_since) = (len, Instant::now());
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
         // `|` in `keys` means: pause so the screen can react before the next key.
         for (i, chunk) in keys.split('|').enumerate() {
             if i > 0 {
@@ -345,4 +366,34 @@ fn ctrl_o_runs_the_open_command_with_the_current_directory() {
     let logged = fs::read_to_string(&log).unwrap_or_default();
     assert_eq!(logged.trim(), sb.root.join("alpha").to_str().unwrap());
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
+}
+
+/// SGR mouse wheel report: button 65 = wheel down, 64 = wheel up. Coordinates are 1-based.
+#[test]
+fn the_mouse_wheel_moves_the_cursor_over_the_list_but_not_over_the_preview() {
+    let sb = Sandbox::new();
+    sb.track();
+
+    let over_list = sb.run_in_pty(&[], &[], "alpha", "\x1b[<65;5;6M|\r");
+    assert!(
+        over_list.contains(sb.root.join("beta").to_str().unwrap()),
+        "{over_list}"
+    );
+
+    let over_preview = sb.run_in_pty(&[], &[], "alpha", "\x1b[<65;80;6M|\r");
+    assert!(
+        over_preview.contains(sb.root.join("alpha").to_str().unwrap()),
+        "{over_preview}"
+    );
+}
+
+/// Mouse reporting is switched on only while the TUI runs, so the shell gets normal text selection back.
+#[test]
+fn mouse_reporting_is_enabled_only_while_the_tui_runs() {
+    let sb = Sandbox::new();
+    sb.track();
+    let text = sb.run_in_pty(&[], &[], "alpha", "\x03");
+    let on = text.find("\x1b[?1000h").expect("mouse reporting on");
+    let off = text.rfind("\x1b[?1000l").expect("mouse reporting restored");
+    assert!(on < off);
 }

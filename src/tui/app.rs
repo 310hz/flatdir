@@ -5,7 +5,10 @@ use std::path::PathBuf;
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config as MatcherConfig, Matcher, Utf32Str};
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{
+    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+};
+use ratatui::layout::{Position, Rect};
 
 use crate::candidates::{self, Entry};
 use crate::context::Context;
@@ -42,6 +45,18 @@ pub struct Status {
     pub is_error: bool,
 }
 
+/// Where the panes were last drawn; the mouse wheel is routed by position.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Panes {
+    pub list: Rect,
+    /// `None` when the terminal is too narrow for a preview.
+    pub preview: Option<Rect>,
+}
+
+/// Rows per wheel notch.
+const LIST_WHEEL_STEP: isize = 1;
+const PREVIEW_WHEEL_STEP: isize = 3;
+
 pub struct View {
     pub idx: usize,
     /// Character positions matched by the query, for highlighting.
@@ -57,6 +72,9 @@ pub struct App {
     pub marks: HashSet<PathBuf>,
     pub status: Option<Status>,
     pub view: Vec<View>,
+    pub panes: Panes,
+    /// First visible row of the preview. Reset by the UI when the previewed entry or mode changes.
+    pub preview_scroll: u16,
     tracked: Vec<Entry>,
     /// Loaded on first use; most sessions never open the archive.
     archived: Option<Vec<Entry>>,
@@ -76,6 +94,8 @@ impl App {
             marks: HashSet::new(),
             status: None,
             view: Vec::new(),
+            panes: Panes::default(),
+            preview_scroll: 0,
             tracked,
             archived: None,
             scores: HashMap::new(),
@@ -122,6 +142,28 @@ impl App {
             self.offset = self.cursor;
         } else if self.cursor >= self.offset + height {
             self.offset = self.cursor + 1 - height;
+        }
+    }
+
+    /// The wheel moves the cursor over the list and scrolls the preview over the preview pane.
+    /// Returns whether the screen needs a redraw: terminals also report plain mouse motion, which
+    /// must not cost a redraw each time.
+    pub fn on_mouse(&mut self, event: MouseEvent) -> bool {
+        let direction = match event.kind {
+            MouseEventKind::ScrollUp => -1,
+            MouseEventKind::ScrollDown => 1,
+            _ => return false,
+        };
+        let at = Position::new(event.column, event.row);
+        if self.panes.preview.is_some_and(|p| p.contains(at)) {
+            let next = self.preview_scroll as isize + direction * PREVIEW_WHEEL_STEP;
+            self.preview_scroll = next.clamp(0, u16::MAX as isize) as u16;
+            true
+        } else if self.panes.list.contains(at) {
+            self.move_cursor(direction * LIST_WHEEL_STEP);
+            true
+        } else {
+            false
         }
     }
 

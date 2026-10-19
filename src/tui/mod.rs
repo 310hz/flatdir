@@ -13,7 +13,10 @@ use std::time::Duration;
 use anyhow::Result;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use ratatui::crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event};
+use ratatui::crossterm::event::{
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event,
+};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -23,7 +26,7 @@ use std::sync::Arc;
 use crate::context::Context;
 use crate::guard;
 
-pub use app::{App, ListKind, Outcome, Status};
+pub use app::{App, ListKind, Outcome, Panes, Status};
 pub use preview::{PreviewMode, Shown};
 
 /// Draws on stderr: stdout is reserved for the selected path, which the shell wrapper captures.
@@ -32,7 +35,12 @@ struct TerminalGuard;
 impl TerminalGuard {
     fn enter() -> Result<Self> {
         enable_raw_mode()?;
-        execute!(io::stderr(), EnterAlternateScreen, EnableBracketedPaste)?;
+        execute!(
+            io::stderr(),
+            EnterAlternateScreen,
+            EnableBracketedPaste,
+            EnableMouseCapture
+        )?;
         // If the terminal ever disagrees with ratatui about a character's width, a line that
         // overflows must not wrap into the left edge of the next row.
         io::stderr().write_all(AUTOWRAP_OFF)?;
@@ -57,7 +65,12 @@ const AUTOWRAP_ON: &[u8] = b"\x1b[?7h";
 fn restore() {
     let _ = io::stderr().write_all(AUTOWRAP_ON);
     let _ = disable_raw_mode();
-    let _ = execute!(io::stderr(), DisableBracketedPaste, LeaveAlternateScreen);
+    let _ = execute!(
+        io::stderr(),
+        DisableMouseCapture,
+        DisableBracketedPaste,
+        LeaveAlternateScreen
+    );
 }
 
 /// Runs the TUI. `Some(path)` means the user pressed Enter on a directory.
@@ -115,6 +128,7 @@ pub fn run(ctx: &Context) -> Result<Option<PathBuf>> {
                 app.on_paste(&text);
                 dirty = true;
             }
+            Event::Mouse(mouse) => dirty |= app.on_mouse(mouse),
             Event::Resize(..) => dirty = true,
             _ => {}
         }

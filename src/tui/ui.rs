@@ -10,7 +10,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
 
-use super::app::{App, ListKind};
+use super::app::{App, ListKind, Panes};
 use super::preview::{self, PreviewMode, Shown};
 use super::text;
 
@@ -50,9 +50,17 @@ pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
         let [list, preview] =
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
                 .areas(body);
+        app.panes = Panes {
+            list,
+            preview: Some(preview),
+        };
         draw_list(frame, app, list);
         draw_preview(frame, app, cache, preview);
     } else {
+        app.panes = Panes {
+            list: body,
+            preview: None,
+        };
         draw_list(frame, app, body);
     }
     draw_status(frame, app, status);
@@ -219,7 +227,7 @@ fn draw_list(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(Paragraph::new(lines), area);
 }
 
-fn draw_preview(frame: &mut Frame, app: &App, cache: &mut PreviewCache, area: Rect) {
+fn draw_preview(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache, area: Rect) {
     let current = app.current().map(|e| e.path.clone());
     let key = current.map(|p| (p, app.preview_mode));
     if cache.key != key {
@@ -235,6 +243,7 @@ fn draw_preview(frame: &mut Frame, app: &App, cache: &mut PreviewCache, area: Re
             }
         }
         cache.key = key;
+        app.preview_scroll = 0;
     }
 
     let title = format!(" {} ", cache.shown.map_or("Preview", Shown::label));
@@ -245,10 +254,15 @@ fn draw_preview(frame: &mut Frame, app: &App, cache: &mut PreviewCache, area: Re
         .title(Span::styled(title, dim()));
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    frame.render_widget(
-        Paragraph::new(Text::from(cache.lines.clone())).wrap(Wrap { trim: false }),
-        inner,
-    );
+    let paragraph = Paragraph::new(Text::from(cache.lines.clone())).wrap(Wrap { trim: false });
+    // Scrolling stops at the last wrapped row instead of running into blank space.
+    let max_scroll = paragraph
+        .line_count(inner.width)
+        .saturating_sub(inner.height as usize);
+    app.preview_scroll = app
+        .preview_scroll
+        .min(max_scroll.min(u16::MAX as usize) as u16);
+    frame.render_widget(paragraph.scroll((app.preview_scroll, 0)), inner);
 }
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {

@@ -38,7 +38,10 @@ flatdir untrack              # unset the managed root
 | `Ctrl+O` | open the current directory in the file manager (Finder on macOS, `xdg-open` elsewhere) |
 | `Ctrl+P` | switch the preview: README (Markdown) <-> file tree. Without a README the tree is shown |
 | `Ctrl+U` | clear the filter |
+| mouse wheel | over the list: move the cursor; over the preview: scroll it |
 | `Esc` / `Ctrl+C` | quit |
+
+While the TUI is open the terminal reports the mouse to flatdir, so selecting text with the mouse needs `Shift` (or `Option` in some terminals) held down.
 
 The shortcuts are always shown at the top, and the `Ctrl+T` label says what it will do in the current list.
 
