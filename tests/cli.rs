@@ -655,3 +655,15 @@ fn a_hint_explains_why_nothing_changed_unless_the_output_is_captured() {
         sb.root.join("alpha").to_str().unwrap()
     );
 }
+
+/// Creating and cloning moved into the TUI (Ctrl+N); the old subcommands are gone, not aliased.
+#[test]
+fn init_and_clone_are_no_longer_subcommands() {
+    let sb = Sandbox::new();
+    sb.track();
+    for args in [&["init", "x"][..], &["clone", "owner/repo"]] {
+        let out = sb.run(args);
+        assert!(!out.status.success(), "{args:?}");
+    }
+    assert!(!sb.root.join("x").exists() && !sb.root.join("repo").exists());
+}

@@ -26,7 +26,7 @@ use std::sync::Arc;
 use crate::context::Context;
 use crate::guard;
 
-pub use app::{App, ListKind, Outcome, Panes, Status};
+pub use app::{App, ListKind, NewForm, Outcome, Panes, SearchResults, Status};
 pub use preview::{PreviewMode, Shown};
 
 /// Draws on stderr: stdout is reserved for the selected path, which the shell wrapper captures.
@@ -110,8 +110,15 @@ pub fn run(ctx: &Context) -> Result<Option<PathBuf>> {
             }
         }
 
+        if app.poll_job(ctx) {
+            dirty = true;
+            continue;
+        }
+
         let wait = if waiting_for_scores {
             Duration::from_millis(5)
+        } else if app.is_busy() {
+            Duration::from_millis(50)
         } else {
             Duration::from_millis(250)
         };
@@ -125,7 +132,7 @@ pub fn run(ctx: &Context) -> Result<Option<PathBuf>> {
                 Outcome::Continue => dirty = true,
             },
             Event::Paste(text) => {
-                app.on_paste(&text);
+                app.on_paste(ctx, &text);
                 dirty = true;
             }
             Event::Mouse(mouse) => dirty |= app.on_mouse(mouse),

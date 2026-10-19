@@ -1,7 +1,7 @@
 //! Rendering. Colors are limited to the terminal's own ANSI palette plus text attributes,
 //! so the screen reads the same on light and dark backgrounds.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
@@ -13,6 +13,7 @@ use unicode_width::UnicodeWidthStr;
 use super::app::{App, ListKind, Panes};
 use super::preview::{self, PreviewMode, Shown};
 use super::text;
+use crate::create::{Job, Plan, RECIPES, Recipe};
 
 const MIN_WIDTH_FOR_PREVIEW: u16 = 70;
 /// Blank columns between the vertical line and the preview text, so the tree's own `│` never lines up with it.
@@ -41,7 +42,10 @@ pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
     draw_title(frame, app, title);
     draw_query(frame, app, query);
 
-    if body.width >= MIN_WIDTH_FOR_PREVIEW {
+    if app.new.open {
+        app.panes = Panes::default();
+        draw_new(frame, app, body);
+    } else if body.width >= MIN_WIDTH_FOR_PREVIEW {
         let [list, preview] =
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
                 .areas(body);
@@ -90,21 +94,27 @@ fn draw_title(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(format!(" {label} "), style)
     };
     // The count and "N marked" are padded, so the title never shifts as they change.
-    let marked = if app.marks.is_empty() {
+    let marked = if app.marks.is_empty() || app.new.open {
         String::new()
     } else {
         format!("{} marked", app.marks.len())
     };
+    // Blank but the same width in the New view, which has no list to count.
+    let counts = if app.new.open {
+        format!("  {:9}", "")
+    } else {
+        format!("  {:>4}/{:<4}", app.view.len(), app.list().len())
+    };
+    let listing = !app.new.open;
     let title = Line::from(vec![
         Span::styled("flatdir", bold()),
         Span::raw(TITLE_GAP),
-        tab("Active", app.kind == ListKind::Active),
+        tab("Active", listing && app.kind == ListKind::Active),
         Span::raw(" "),
-        tab("Archived", app.kind == ListKind::Archived),
-        Span::styled(
-            format!("  {:>4}/{:<4}", app.view.len(), app.list().len()),
-            dim(),
-        ),
+        tab("Archived", listing && app.kind == ListKind::Archived),
+        Span::raw(" "),
+        tab("New", app.new.open),
+        Span::styled(counts, dim()),
         Span::styled(
             format!("  {marked:<COUNT_WIDTH$}"),
             Style::default().fg(MARK_COLOR).add_modifier(Modifier::BOLD),
@@ -132,16 +142,28 @@ const OPEN_LABEL: &str = if cfg!(target_os = "macos") {
     "Open in File Manager"
 };
 
-fn help_items(kind: ListKind) -> [(&'static str, &'static str); 10] {
-    [
+fn help_items(app: &App) -> Vec<(&'static str, &'static str)> {
+    if app.new.open {
+        return vec![
+            ("Tab / Shift+Tab", "Choose Kind"),
+            ("Enter", "Create / Search / Clone"),
+            ("Up / Down", "Choose Search Result"),
+            ("Ctrl+L", "Toggle LFS: On/Off"),
+            ("Ctrl+U", "Clear Name"),
+            ("Esc / Ctrl+N", "Back to List"),
+            ("Ctrl+C", "Quit"),
+        ];
+    }
+    vec![
         ("Enter", "cd"),
         ("Tab / Shift+Tab", "Mark"),
         ("Ctrl+Q", "Clear Marks"),
         ("Ctrl+T", "Toggle List: Active/Archived"),
-        ("Ctrl+A", toggle_label(kind)),
+        ("Ctrl+A", toggle_label(app.kind)),
         ("Ctrl+R", "Move to Trash"),
         ("Ctrl+O", OPEN_LABEL),
         ("Ctrl+P", "Toggle Preview: README/Tree"),
+        ("Ctrl+N", "New Directory or Clone"),
         ("Ctrl+U", "Clear Query"),
         ("Esc", "Quit"),
     ]
@@ -150,7 +172,7 @@ fn help_items(kind: ListKind) -> [(&'static str, &'static str); 10] {
 /// The shortcut list, centered on top of the screen.
 fn draw_help(frame: &mut Frame, app: &App) {
     const GAP: usize = 3;
-    let items = help_items(app.kind);
+    let items = help_items(app);
     let key_width = items.iter().map(|(k, _)| k.width()).max().unwrap_or(0);
     let lines: Vec<Line> = items
         .iter()
@@ -187,7 +209,7 @@ fn draw_help(frame: &mut Frame, app: &App) {
 }
 
 fn draw_query(frame: &mut Frame, app: &App, area: Rect) {
-    let prompt = "> ";
+    let prompt = if app.new.open { "+ " } else { "> " };
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(prompt, bold()),
@@ -198,6 +220,118 @@ fn draw_query(frame: &mut Frame, app: &App, area: Rect) {
     let x = area.x
         + (prompt.width() + app.query.width()).min(area.width.saturating_sub(1) as usize) as u16;
     frame.set_cursor_position(Position::new(x, area.y));
+}
+
+/// The New view: the kinds to choose from, what Enter will do, and search results.
+fn draw_new(frame: &mut Frame, app: &App, area: Rect) {
+    let new = &app.new;
+    let mut lines = vec![
+        Line::default(),
+        Line::from(vec![
+            Span::styled("  Kind", bold()),
+            Span::styled("  Tab / Shift+Tab", dim()),
+        ]),
+    ];
+    let label_width = RECIPES.iter().map(|r| r.label().width()).max().unwrap_or(0);
+    for (i, recipe) in RECIPES.iter().enumerate() {
+        let chosen = i == new.recipe;
+        let label = Span::styled(
+            format!(" {:<label_width$} ", recipe.label()),
+            if chosen {
+                Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD)
+            } else {
+                Style::default()
+            },
+        );
+        let hint = if chosen { recipe.hint() } else { "" };
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            label,
+            Span::styled(format!("  {hint}"), dim()),
+        ]));
+    }
+
+    if let Recipe::Clone(hub) = new.recipe()
+        && hub.is_hugging_face()
+    {
+        lines.push(Line::default());
+        lines.push(Line::from(vec![
+            Span::styled("  LFS files: ", bold()),
+            Span::raw(if new.lfs {
+                "download"
+            } else {
+                "skip (pointers only)"
+            }),
+            Span::styled("  Ctrl+L", dim()),
+        ]));
+    }
+
+    lines.push(Line::default());
+    lines.push(match &new.plan {
+        Some(Ok(plan)) => Line::from(vec![
+            Span::styled("  Enter ", bold()),
+            Span::raw(text::sanitize(&describe(plan, &app.home)).into_owned()),
+        ]),
+        Some(Err(e)) => Line::from(Span::styled(
+            format!("  {}", text::sanitize(&format!("{e:#}"))),
+            Style::default().fg(DANGER_COLOR),
+        )),
+        None => Line::default(),
+    });
+
+    if let Some(results) = new.hits_for(&app.query) {
+        lines.push(Line::default());
+        lines.push(Line::from(vec![
+            Span::styled(format!("  {} results", results.hub.label()), bold()),
+            Span::styled("  Up / Down", dim()),
+        ]));
+        let room = (area.height as usize).saturating_sub(lines.len());
+        let offset = (results.cursor + 1).saturating_sub(room);
+        let id_width = results.hits.iter().map(|h| h.id.width()).max().unwrap_or(0);
+        for (i, hit) in results.hits.iter().enumerate().skip(offset).take(room) {
+            let mut line = Line::from(vec![
+                Span::raw(format!(
+                    "  {:<id_width$}",
+                    text::sanitize(&hit.id).into_owned()
+                )),
+                Span::styled(format!("  {:>11}", hit.meta), dim()),
+                Span::styled(format!("  {}", text::sanitize(&hit.description)), dim()),
+            ]);
+            if i == results.cursor {
+                line = line.style(Style::default().add_modifier(Modifier::REVERSED));
+            }
+            lines.push(line);
+        }
+    }
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+fn describe(plan: &Plan, home: &Path) -> String {
+    let short = |p: &Path| match p.strip_prefix(home) {
+        Ok(rest) => format!("~/{}", rest.display()),
+        Err(_) => p.display().to_string(),
+    };
+    match plan {
+        Plan::MakeDir(dest) => format!("creates {}", short(dest)),
+        Plan::Run(Job::NewGitHubRepo { name, dest }) => format!(
+            "creates the private GitHub repository {name} and clones it to {}",
+            short(dest)
+        ),
+        Plan::Run(Job::Clone {
+            url,
+            dest,
+            skip_lfs,
+        }) => format!(
+            "clones {url} to {}{}",
+            short(dest),
+            if *skip_lfs {
+                " (LFS files skipped)"
+            } else {
+                ""
+            }
+        ),
+        Plan::Run(Job::Search { hub, query }) => format!("searches {} for {query:?}", hub.label()),
+    }
 }
 
 fn draw_list(frame: &mut Frame, app: &mut App, area: Rect) {

@@ -21,7 +21,6 @@ pub struct RootStatus {
 
 pub struct Status {
     pub config_path: PathBuf,
-    pub color: Option<String>,
     pub root: Option<RootStatus>,
     pub tools: Vec<Tool>,
 }
@@ -29,8 +28,10 @@ pub struct Status {
 /// Everything else is built in; these only enable extra features.
 const TOOLS: &[(&str, &str)] = &[
     ("zoxide", "order by frecency"),
-    ("gh", "init --git, clone"),
-    ("git", "init --git, clone"),
+    ("git", "Git (private) and clones in the TUI's New view"),
+    ("gh", "Git (private) and GitHub search"),
+    ("curl", "Hugging Face search"),
+    ("git-lfs", "large files of Hugging Face clones"),
 ];
 
 /// Read-only; never fails, so a broken setup is still reported.
@@ -43,7 +44,6 @@ pub fn status(ctx: &Context) -> Status {
     });
     Status {
         config_path: ctx.env.config_path.clone(),
-        color: ctx.config.color.clone(),
         root,
         tools: TOOLS
             .iter()
@@ -71,13 +71,6 @@ impl fmt::Display for Status {
             }
         }
         writeln!(f, "config:      {}", self.config_path.display())?;
-        writeln!(
-            f,
-            "color:       {}",
-            self.color
-                .as_deref()
-                .unwrap_or("(default: follows the terminal palette)")
-        )?;
 
         writeln!(f, "\noptional commands:")?;
         for t in &self.tools {

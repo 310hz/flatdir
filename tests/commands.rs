@@ -5,13 +5,13 @@ mod common;
 use std::fs;
 use std::path::Path;
 
-use common::{RowsSelector, Sandbox};
+use common::Sandbox;
 use flatdir::candidates;
 use flatdir::cmd;
 use flatdir::config::Config;
+use flatdir::create::{self, Hub, Job, Plan, Recipe};
 use flatdir::ops;
-use flatdir::select::{SelectOpts, pick};
-use flatdir::services::parse_zoxide;
+use flatdir::services::{parse_github_hits, parse_hf_hits, parse_zoxide};
 
 const ROOT_ALL: [&str; 5] = [".hidden", "alpha", "beta", "file.txt", "gamma"];
 
@@ -160,22 +160,6 @@ fn symlinks_are_not_followed_as_targets() {
 }
 
 #[test]
-fn unknown_row_from_the_selector_is_an_error() {
-    let sb = Sandbox::new();
-    let mut ctx = sb.ctx();
-    ctx.selector = Box::new(RowsSelector(vec!["x\t/etc".to_string()]));
-    let rows = vec![vec!["alpha".to_string(), "1".to_string()]];
-    let opts = SelectOpts {
-        multi: false,
-        prompt: None,
-        height_percent: 60,
-        repo_preview: false,
-    };
-    let err = pick(&ctx, &rows, &opts).unwrap_err().to_string();
-    assert!(err.contains("unknown row"), "{err}");
-}
-
-#[test]
 fn the_root_can_be_set_replaced_and_unset() {
     let sb = Sandbox::new();
     let other = sb.home.join("other");
@@ -249,26 +233,104 @@ fn the_root_must_be_an_existing_directory_under_home() {
 }
 
 #[test]
-fn init_creates_plain_dir_and_rejects_escaping_names() {
+fn new_names_must_be_plain_and_free() {
     let sb = Sandbox::new();
     let ctx = sb.ctx();
-    for bad in ["../x", "a/b", ".hidden2", "", ".."] {
-        assert!(cmd::init(&ctx, bad, false).is_err(), "{bad:?}");
+    for bad in ["../x", "a/b", ".hidden2", "", "..", "a\tb"] {
+        assert!(
+            create::plan(&ctx, Recipe::Directory, bad, false).is_err(),
+            "{bad:?}"
+        );
     }
-    assert!(cmd::init(&ctx, "alpha", false).is_err());
+    assert!(create::plan(&ctx, Recipe::Directory, "alpha", false).is_err());
+    assert!(create::plan(&ctx, Recipe::GitHubRepo, "alpha", false).is_err());
 
     fs::create_dir_all(sb.archive_dir().join("archived-name")).unwrap();
-    assert!(cmd::init(&ctx, "archived-name", false).is_err());
+    assert!(create::plan(&ctx, Recipe::Directory, "archived-name", false).is_err());
 
     assert_eq!(
-        cmd::init(&ctx, "fresh", false).unwrap(),
-        sb.root.join("fresh")
+        create::plan(&ctx, Recipe::Directory, " fresh ", false).unwrap(),
+        Plan::MakeDir(sb.root.join("fresh"))
     );
-    assert!(sb.root.join("fresh").is_dir());
 }
 
 #[test]
-fn config_ignores_unknown_legacy_keys_and_reads_color_and_sound() {
+fn clone_targets_are_urls_owner_name_or_search_words() {
+    let sb = Sandbox::new();
+    let ctx = sb.ctx();
+    let plan = |recipe, input: &str, lfs| create::plan(&ctx, recipe, input, lfs);
+    let clone = |url: &str, name: &str, skip_lfs| {
+        Plan::Run(Job::Clone {
+            url: url.to_string(),
+            dest: sb.root.join(name),
+            skip_lfs,
+        })
+    };
+
+    assert_eq!(
+        plan(Recipe::Clone(Hub::GitHub), "owner/repo.git", false).unwrap(),
+        clone("git@github.com:owner/repo.git", "repo", false)
+    );
+    assert_eq!(
+        plan(Recipe::Clone(Hub::HfModel), "openai/whisper", false).unwrap(),
+        clone("https://huggingface.co/openai/whisper", "whisper", true)
+    );
+    assert_eq!(
+        plan(Recipe::Clone(Hub::HfDataset), "rajpurkar/squad", true).unwrap(),
+        clone(
+            "https://huggingface.co/datasets/rajpurkar/squad",
+            "squad",
+            false
+        )
+    );
+    assert_eq!(
+        plan(Recipe::Clone(Hub::HfSpace), "a/b", false).unwrap(),
+        clone("https://huggingface.co/spaces/a/b", "b", true)
+    );
+    assert_eq!(
+        plan(
+            Recipe::Clone(Hub::GitHub),
+            "https://example.com/x/tool.git",
+            false
+        )
+        .unwrap(),
+        clone("https://example.com/x/tool.git", "tool", false)
+    );
+    assert_eq!(
+        plan(Recipe::Clone(Hub::HfModel), "whisper", false).unwrap(),
+        Plan::Run(Job::Search {
+            hub: Hub::HfModel,
+            query: "whisper".to_string()
+        })
+    );
+
+    // Nothing is ever overwritten, and odd ids are refused rather than guessed.
+    assert!(plan(Recipe::Clone(Hub::GitHub), "someone/alpha", false).is_err());
+    for bad in ["a/b/c", "/b", "a/", "a/..", "a /b"] {
+        assert!(
+            plan(Recipe::Clone(Hub::GitHub), bad, false).is_err(),
+            "{bad:?}"
+        );
+    }
+}
+
+#[test]
+fn search_results_are_parsed_from_gh_and_the_hugging_face_api() {
+    let gh = parse_github_hits(
+        r#"[{"fullName":"o/r","stargazersCount":12,"description":"d"},{"fullName":"o/s","stargazersCount":0,"description":null}]"#,
+    )
+    .unwrap();
+    assert_eq!(gh[0].id, "o/r");
+    assert_eq!(gh[0].meta, "12 stars");
+    assert_eq!(gh[1].description, "");
+
+    let hf = parse_hf_hits(r#"[{"id":"openai/whisper","likes":5,"downloads":9}]"#).unwrap();
+    assert_eq!(hf[0].id, "openai/whisper");
+    assert_eq!(hf[0].meta, "5 likes");
+}
+
+#[test]
+fn config_ignores_unknown_legacy_keys_and_reads_sound() {
     let sb = Sandbox::new();
     fs::create_dir_all(sb.config_path.parent().unwrap()).unwrap();
     fs::write(
@@ -278,7 +340,6 @@ fn config_ignores_unknown_legacy_keys_and_reads_color_and_sound() {
     .unwrap();
     let config = Config::load(&sb.config_path).unwrap();
     assert_eq!(config.root.as_deref(), Some(Path::new("/x")));
-    assert_eq!(config.color.as_deref(), Some("light"));
     assert!(config.sound);
     assert!(!Config::default().sound, "sound is opt-in");
 }

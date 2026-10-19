@@ -10,26 +10,10 @@ use std::sync::{Arc, Mutex};
 use flatdir::candidates;
 use flatdir::config::Config;
 use flatdir::context::Context;
+use flatdir::create::{Hit, Hub};
 use flatdir::paths::Env;
-use flatdir::select::{SelectOpts, Selector};
-use flatdir::services::{Opener, Prompter, ScoreSource, Trasher};
+use flatdir::services::{Forge, Opener, ScoreSource, Trasher};
 use tempfile::TempDir;
-
-pub struct NeverSelector;
-
-impl Selector for NeverSelector {
-    fn select(&self, _: &[String], _: &SelectOpts) -> anyhow::Result<Vec<String>> {
-        panic!("selector must not be called");
-    }
-}
-
-pub struct RowsSelector(pub Vec<String>);
-
-impl Selector for RowsSelector {
-    fn select(&self, _: &[String], _: &SelectOpts) -> anyhow::Result<Vec<String>> {
-        Ok(self.0.clone())
-    }
-}
 
 /// Moves into a throwaway directory instead of the real trash.
 pub struct FakeTrasher {
@@ -61,11 +45,54 @@ impl Opener for FakeOpener {
     }
 }
 
-pub struct FakePrompter(pub bool);
+/// Records what would have been run and creates the destination instead of using the network.
+pub struct FakeForge {
+    pub calls: Mutex<Vec<String>>,
+    pub hits: Vec<Hit>,
+}
 
-impl Prompter for FakePrompter {
-    fn confirm(&self, _: &str) -> bool {
-        self.0
+impl FakeForge {
+    pub fn calls(&self) -> Vec<String> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+impl Default for FakeForge {
+    fn default() -> Self {
+        let hit = |id: &str| Hit {
+            id: id.to_string(),
+            meta: "1 stars".to_string(),
+            description: String::new(),
+        };
+        Self {
+            calls: Mutex::default(),
+            hits: vec![hit("someone/found-one"), hit("other/found-two")],
+        }
+    }
+}
+
+impl Forge for FakeForge {
+    fn new_github_repo(&self, name: &str, dest: &Path) -> anyhow::Result<()> {
+        self.calls.lock().unwrap().push(format!("new {name}"));
+        fs::create_dir(dest)?;
+        Ok(())
+    }
+
+    fn clone_repo(&self, url: &str, dest: &Path, skip_lfs: bool) -> anyhow::Result<()> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("clone {url} skip_lfs={skip_lfs}"));
+        fs::create_dir(dest)?;
+        Ok(())
+    }
+
+    fn search(&self, hub: Hub, query: &str) -> anyhow::Result<Vec<Hit>> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("search {} {query}", hub.label()));
+        Ok(self.hits.clone())
     }
 }
 
@@ -85,6 +112,7 @@ pub struct Sandbox {
     pub trash_dir: PathBuf,
     pub config_path: PathBuf,
     pub opened: Arc<Mutex<Vec<PathBuf>>>,
+    pub forge: Arc<FakeForge>,
 }
 
 impl Sandbox {
@@ -108,6 +136,7 @@ impl Sandbox {
             root,
             trash_dir,
             opened: Arc::default(),
+            forge: Arc::default(),
         }
     }
 
@@ -120,17 +149,15 @@ impl Sandbox {
             },
             config: Config {
                 root: Some(self.root.clone()),
-                color: None,
                 sound: false,
             },
             interactive: true,
-            selector: Box::new(NeverSelector),
             trasher: Box::new(FakeTrasher {
                 dir: self.trash_dir.clone(),
                 trashed: RefCell::new(vec![]),
             }),
-            prompter: Box::new(FakePrompter(false)),
             opener: Box::new(FakeOpener(Arc::clone(&self.opened))),
+            forge: Arc::clone(&self.forge) as Arc<dyn Forge>,
             scores: Arc::new(FakeScores(HashMap::new())),
         }
     }

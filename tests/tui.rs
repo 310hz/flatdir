@@ -285,7 +285,7 @@ fn in_the_archived_list_ctrl_a_restores_and_ctrl_r_trashes() {
 fn pasted_text_is_data_and_never_triggers_commands() {
     let (sb, ctx, mut app) = setup();
     // Ctrl+A (0x01, archive) and Ctrl+R (0x12, trash) inside a paste must not act as shortcuts.
-    app.on_paste("al\x01\x12pha\n");
+    app.on_paste(&ctx, "al\x01\x12pha\n");
     assert_eq!(app.query, "alpha");
     assert_eq!(
         sb.names(&sb.root),
@@ -608,6 +608,7 @@ fn help_opens_on_top_and_shows_every_item_whole() {
         "Ctrl+R            Move to Trash",
         "Ctrl+O            Open in",
         "Ctrl+P            Toggle Preview: README/Tree",
+        "Ctrl+N            New Directory or Clone",
         "Ctrl+U            Clear Query",
         "Esc               Quit",
     ];
@@ -637,7 +638,7 @@ fn help_takes_the_keys_until_it_is_closed() {
     app.on_key(&ctx, ctrl('r'));
     app.on_key(&ctx, ctrl('a'));
     app.on_key(&ctx, key(KeyCode::Enter));
-    app.on_paste("beta");
+    app.on_paste(&ctx, "beta");
     render(&mut app, 100, 20);
     let list = app.panes.list;
     assert!(!click(&mut app, MouseButton::Right, list.x + 3, list.y + 1));
@@ -990,6 +991,238 @@ fn the_title_has_room_before_the_tabs_and_a_blank_row_above_the_content() {
         assert!(
             rows[2].starts_with('>'),
             "width {width}: the content follows the blank row"
+        );
+    }
+}
+
+fn type_name(app: &mut App, ctx: &Context, text: &str) {
+    for c in text.chars() {
+        app.on_key(ctx, key(KeyCode::Char(c)));
+    }
+}
+
+/// Tab moves through the kinds in `RECIPES` order: Directory, Git, GitHub, HF Model, Dataset, Space.
+fn choose_kind(app: &mut App, ctx: &Context, steps: usize) {
+    for _ in 0..steps {
+        app.on_key(ctx, key(KeyCode::Tab));
+    }
+}
+
+#[test]
+fn ctrl_n_swaps_the_list_for_the_new_view_and_keeps_the_typed_text() {
+    let (_sb, ctx, mut app) = setup();
+    type_name(&mut app, &ctx, "fresh");
+    app.on_key(&ctx, ctrl('n'));
+    assert!(app.new.open);
+    assert_eq!(app.query, "fresh");
+
+    let text = screen(&render(&mut app, 100, 24));
+    assert!(text.contains("+ fresh"), "{text}");
+    assert!(!text.contains("alpha"), "the list is hidden:\n{text}");
+    assert!(
+        text.contains("Directory") && text.contains("Clone: HF Model"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Enter creates"),
+        "Enter says what it will do:\n{text}"
+    );
+
+    assert_eq!(app.on_key(&ctx, key(KeyCode::Esc)), Outcome::Continue);
+    assert!(!app.new.open, "Esc goes back instead of quitting");
+    app.on_key(&ctx, ctrl('n'));
+    app.on_key(&ctx, ctrl('n'));
+    assert!(!app.new.open, "Ctrl+N toggles");
+}
+
+#[test]
+fn enter_in_the_new_view_creates_the_directory_and_lands_on_it() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('n'));
+    type_name(&mut app, &ctx, "fresh");
+    assert_eq!(app.on_key(&ctx, key(KeyCode::Enter)), Outcome::Continue);
+
+    assert!(sb.root.join("fresh").is_dir());
+    assert!(!app.new.open, "back to the list");
+    assert_eq!(app.kind, ListKind::Active);
+    assert!(app.query.is_empty());
+    assert_eq!(app.current().unwrap().name, "fresh");
+    assert_eq!(app.status.as_ref().unwrap().text, "created: fresh");
+    assert_eq!(
+        app.on_key(&ctx, key(KeyCode::Enter)),
+        Outcome::Cd(sb.root.join("fresh"))
+    );
+}
+
+#[test]
+fn existing_or_invalid_names_are_refused_and_shown_before_enter() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    type_name(&mut app, &ctx, "alpha");
+    let text = screen(&render(&mut app, 100, 24));
+    assert!(text.contains("already exists"), "{text}");
+
+    app.on_key(&ctx, key(KeyCode::Enter));
+    assert!(app.new.open, "stays open to fix the name");
+    assert!(app.status.as_ref().unwrap().is_error);
+    assert_eq!(
+        sb.names(&sb.root),
+        [".hidden", "alpha", "beta", "file.txt", "gamma"]
+    );
+}
+
+#[test]
+fn list_actions_are_unreachable_from_the_new_view() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    for c in ['r', 'a', 'o', 't', 'p', 'q'] {
+        app.on_key(&ctx, ctrl(c));
+    }
+    render(&mut app, 100, 24);
+    assert!(!click(&mut app, MouseButton::Right, 3, 4));
+    assert!(sb.forge.calls().is_empty());
+    assert_eq!(
+        sb.names(&sb.root),
+        [".hidden", "alpha", "beta", "file.txt", "gamma"]
+    );
+    assert!(sb.names(&sb.trash_dir).is_empty() && !sb.archive_dir().exists());
+    assert!(sb.opened.lock().unwrap().is_empty());
+    assert_eq!(app.kind, ListKind::Active);
+}
+
+#[test]
+fn git_kind_creates_a_private_repository_in_the_background() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    choose_kind(&mut app, &ctx, 1);
+    type_name(&mut app, &ctx, "repo");
+    app.on_key(&ctx, key(KeyCode::Enter));
+    assert!(app.is_busy());
+    app.wait_for_job(&ctx);
+
+    assert_eq!(sb.forge.calls(), ["new repo"]);
+    assert_eq!(app.current().unwrap().name, "repo");
+    assert!(!app.new.open);
+}
+
+#[test]
+fn clone_takes_owner_slash_name_directly() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    choose_kind(&mut app, &ctx, 2);
+    type_name(&mut app, &ctx, "owner/tool");
+    app.on_key(&ctx, key(KeyCode::Enter));
+    app.wait_for_job(&ctx);
+    assert_eq!(
+        sb.forge.calls(),
+        ["clone git@github.com:owner/tool.git skip_lfs=false"]
+    );
+    assert_eq!(app.current().unwrap().name, "tool");
+}
+
+#[test]
+fn a_word_without_a_slash_is_searched_and_a_result_is_cloned() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    choose_kind(&mut app, &ctx, 4);
+    type_name(&mut app, &ctx, "squad");
+    app.on_key(&ctx, key(KeyCode::Enter));
+    app.wait_for_job(&ctx);
+    assert_eq!(sb.forge.calls(), ["search HF Dataset squad"]);
+
+    let text = screen(&render(&mut app, 100, 24));
+    assert!(
+        text.contains("someone/found-one") && text.contains("other/found-two"),
+        "{text}"
+    );
+    app.on_key(&ctx, key(KeyCode::Down));
+    let text = screen(&render(&mut app, 100, 24));
+    assert!(
+        text.contains("clones https://huggingface.co/datasets/other/found-two"),
+        "{text}"
+    );
+
+    app.on_key(&ctx, key(KeyCode::Enter));
+    app.wait_for_job(&ctx);
+    assert_eq!(
+        sb.forge.calls().last().unwrap(),
+        "clone https://huggingface.co/datasets/other/found-two skip_lfs=true"
+    );
+    assert!(sb.root.join("found-two").is_dir());
+}
+
+#[test]
+fn editing_the_query_or_the_kind_drops_stale_results() {
+    let (_sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    choose_kind(&mut app, &ctx, 2);
+    type_name(&mut app, &ctx, "tool");
+    app.on_key(&ctx, key(KeyCode::Enter));
+    app.wait_for_job(&ctx);
+    assert!(app.new.hits_for(&app.query).is_some());
+
+    type_name(&mut app, &ctx, "s");
+    assert!(
+        app.new.hits_for(&app.query).is_none(),
+        "results belong to the old word"
+    );
+    app.on_key(&ctx, key(KeyCode::Backspace));
+    assert!(app.new.hits_for(&app.query).is_some());
+    choose_kind(&mut app, &ctx, 1);
+    assert!(
+        app.new.hits_for(&app.query).is_none(),
+        "results belong to another hub"
+    );
+}
+
+#[test]
+fn ctrl_l_downloads_lfs_files_only_for_hugging_face() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    app.on_key(&ctx, ctrl('l'));
+    assert!(!app.new.lfs, "no LFS option outside Hugging Face");
+
+    choose_kind(&mut app, &ctx, 3);
+    let text = screen(&render(&mut app, 100, 24));
+    assert!(text.contains("LFS files: skip"), "{text}");
+    app.on_key(&ctx, ctrl('l'));
+    assert!(app.new.lfs);
+    type_name(&mut app, &ctx, "openai/whisper");
+    app.on_key(&ctx, key(KeyCode::Enter));
+    app.wait_for_job(&ctx);
+    assert_eq!(
+        sb.forge.calls(),
+        ["clone https://huggingface.co/openai/whisper skip_lfs=false"]
+    );
+}
+
+#[test]
+fn help_in_the_new_view_lists_its_own_keys() {
+    let (_sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    app.on_key(&ctx, key(KeyCode::Char('?')));
+    assert!(app.help && app.query.is_empty());
+    let text = screen(&render(&mut app, 100, 24));
+    assert!(
+        text.contains("Choose Kind") && text.contains("Back to List"),
+        "{text}"
+    );
+    app.on_key(&ctx, key(KeyCode::Esc));
+    assert!(app.new.open, "closing the help keeps the New view");
+}
+
+#[test]
+fn the_title_marks_the_new_view_without_moving() {
+    let (_sb, ctx, mut app) = setup();
+    let before = screen(&render(&mut app, 100, 24));
+    app.on_key(&ctx, ctrl('n'));
+    let after = screen(&render(&mut app, 100, 24));
+    for mark in ["Active", "Archived", "New", "? Help"] {
+        assert_eq!(
+            find_on_screen(&before, mark),
+            find_on_screen(&after, mark),
+            "{mark}"
         );
     }
 }

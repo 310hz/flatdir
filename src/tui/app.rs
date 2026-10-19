@@ -1,7 +1,10 @@
 //! TUI state machine. Pure with respect to the terminal, so it is tested without one.
 
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config as MatcherConfig, Matcher, Utf32Str};
@@ -12,6 +15,7 @@ use ratatui::layout::{Position, Rect};
 
 use crate::candidates::{self, Entry};
 use crate::context::Context;
+use crate::create::{self, Done, Hit, Hub, Job, Plan, RECIPES, Recipe};
 use crate::guard;
 use crate::ops;
 use crate::services::play_trash_sound;
@@ -57,6 +61,39 @@ pub struct Panes {
 const LIST_WHEEL_STEP: isize = 1;
 const PREVIEW_WHEEL_STEP: isize = 3;
 
+/// The New view (Ctrl+N): the query line becomes the name, the list makes way for the options.
+#[derive(Default)]
+pub struct NewForm {
+    pub open: bool,
+    /// Index into `RECIPES`.
+    pub recipe: usize,
+    /// Download Git LFS files of Hugging Face clones.
+    pub lfs: bool,
+    pub search: Option<SearchResults>,
+    /// What Enter would do with the current input, recomputed after every change.
+    pub plan: Option<anyhow::Result<Plan>>,
+}
+
+impl NewForm {
+    pub fn recipe(&self) -> Recipe {
+        RECIPES[self.recipe]
+    }
+
+    /// Results are shown only while the query and kind they were found for are unchanged.
+    pub fn hits_for(&self, query: &str) -> Option<&SearchResults> {
+        self.search
+            .as_ref()
+            .filter(|s| s.query == query.trim() && self.recipe() == Recipe::Clone(s.hub))
+    }
+}
+
+pub struct SearchResults {
+    pub hub: Hub,
+    pub query: String,
+    pub hits: Vec<Hit>,
+    pub cursor: usize,
+}
+
 pub struct View {
     pub idx: usize,
     /// Character positions matched by the query, for highlighting.
@@ -75,6 +112,11 @@ pub struct App {
     pub panes: Panes,
     /// The shortcut list is open on top of everything; keys go to it instead of the query.
     pub help: bool,
+    pub new: NewForm,
+    /// Paths on screen are shortened to `~/...` with this.
+    pub home: PathBuf,
+    /// A create, clone or search running on a worker thread; one at a time.
+    job: Option<Receiver<Done>>,
     /// First visible row of the preview. Reset by the UI when the previewed entry or mode changes.
     pub preview_scroll: u16,
     active: Vec<Entry>,
@@ -98,6 +140,9 @@ impl App {
             view: Vec::new(),
             panes: Panes::default(),
             help: false,
+            new: NewForm::default(),
+            home: ctx.env.home.clone(),
+            job: None,
             preview_scroll: 0,
             active,
             archived: None,
@@ -156,8 +201,8 @@ impl App {
     /// Returns whether the screen needs a redraw: terminals also report plain mouse motion, which
     /// must not cost a redraw each time.
     pub fn on_mouse(&mut self, event: MouseEvent) -> bool {
-        // The list under the help window is hidden, so it must not be clicked or scrolled blindly.
-        if self.help {
+        // The list under the help window or the New view is hidden; never click or scroll it blindly.
+        if self.help || self.new.open {
             return false;
         }
         let at = Position::new(event.column, event.row);
@@ -196,13 +241,17 @@ impl App {
         }
     }
 
-    pub fn on_paste(&mut self, text: &str) {
+    pub fn on_paste(&mut self, ctx: &Context, text: &str) {
         if self.help {
             return;
         }
         // Pasted text is data, never commands: control characters are dropped.
         self.query.extend(text.chars().filter(|c| !c.is_control()));
-        self.refilter();
+        if self.new.open {
+            self.refresh_plan(ctx);
+        } else {
+            self.refilter();
+        }
     }
 
     pub fn on_key(&mut self, ctx: &Context, key: KeyEvent) -> Outcome {
@@ -219,6 +268,9 @@ impl App {
             }
             return Outcome::Continue;
         }
+        if self.new.open {
+            return self.on_new_key(ctx, key, ctrl);
+        }
         match (key.code, ctrl) {
             (KeyCode::Esc, _) | (KeyCode::Char('c'), true) => return Outcome::Quit,
             (KeyCode::Enter, _) => {
@@ -233,6 +285,11 @@ impl App {
             (KeyCode::Char('r'), true) => self.execute(ctx, Op::Trash),
             (KeyCode::Char('o'), true) => self.open_current(ctx),
             (KeyCode::Char('q'), true) => self.clear_marks(),
+            (KeyCode::Char('n'), true) => {
+                self.new.open = true;
+                self.status = None;
+                self.refresh_plan(ctx);
+            }
             (KeyCode::Char('u'), true) => {
                 self.query.clear();
                 self.refilter();
@@ -255,6 +312,177 @@ impl App {
             _ => {}
         }
         Outcome::Continue
+    }
+
+    /// Only name editing and the New view's own keys. Actions on the hidden list (archive, trash,
+    /// open) are deliberately not reachable from here.
+    fn on_new_key(&mut self, ctx: &Context, key: KeyEvent, ctrl: bool) -> Outcome {
+        match (key.code, ctrl) {
+            (KeyCode::Char('c'), true) => return Outcome::Quit,
+            (KeyCode::Esc, _) | (KeyCode::Char('n'), true) => {
+                self.new.open = false;
+                self.status = None;
+                self.refilter();
+            }
+            (KeyCode::Char('?'), false) => self.help = true,
+            (KeyCode::Tab, _) => self.cycle_recipe(1),
+            (KeyCode::BackTab, _) => self.cycle_recipe(-1),
+            (KeyCode::Char('l'), true) => {
+                if matches!(self.new.recipe(), Recipe::Clone(hub) if hub.is_hugging_face()) {
+                    self.new.lfs = !self.new.lfs;
+                }
+            }
+            (KeyCode::Down, _) => self.move_hit(1),
+            (KeyCode::Up, _) => self.move_hit(-1),
+            (KeyCode::PageDown, _) => self.move_hit(10),
+            (KeyCode::PageUp, _) => self.move_hit(-10),
+            (KeyCode::Enter, _) => self.submit_new(ctx),
+            (KeyCode::Char('u'), true) => self.query.clear(),
+            (KeyCode::Backspace, _) => {
+                self.query.pop();
+            }
+            (KeyCode::Char(c), false) if !key.modifiers.contains(KeyModifiers::ALT) => {
+                self.query.push(c)
+            }
+            _ => {}
+        }
+        if self.new.open {
+            self.refresh_plan(ctx);
+        }
+        Outcome::Continue
+    }
+
+    fn refresh_plan(&mut self, ctx: &Context) {
+        self.new.plan = Some(self.new_plan(ctx));
+    }
+
+    fn cycle_recipe(&mut self, delta: isize) {
+        let n = RECIPES.len() as isize;
+        self.new.recipe = (self.new.recipe as isize + delta).rem_euclid(n) as usize;
+    }
+
+    fn move_hit(&mut self, delta: isize) {
+        let query = self.query.clone();
+        if self.new.hits_for(&query).is_none() {
+            return;
+        }
+        if let Some(results) = self.new.search.as_mut() {
+            let last = results.hits.len().saturating_sub(1) as isize;
+            results.cursor = (results.cursor as isize + delta).clamp(0, last) as usize;
+        }
+    }
+
+    /// What Enter would do now; the New view shows it before it happens.
+    pub fn new_plan(&self, ctx: &Context) -> anyhow::Result<Plan> {
+        let recipe = self.new.recipe();
+        if let (Recipe::Clone(hub), Some(results)) = (recipe, self.new.hits_for(&self.query))
+            && let Some(hit) = results.hits.get(results.cursor)
+        {
+            return create::plan_clone(ctx, hub, &hit.id, self.new.lfs).map(Plan::Run);
+        }
+        create::plan(ctx, recipe, &self.query, self.new.lfs)
+    }
+
+    pub fn is_busy(&self) -> bool {
+        self.job.is_some()
+    }
+
+    fn submit_new(&mut self, ctx: &Context) {
+        if self.is_busy() {
+            return self.info("still working on the previous request");
+        }
+        match self.new_plan(ctx) {
+            Ok(Plan::MakeDir(dest)) => match fs::create_dir(&dest) {
+                Ok(()) => self.created(ctx, dest),
+                Err(e) => self.fail(
+                    anyhow::Error::new(e).context(format!("failed to create {}", dest.display())),
+                ),
+            },
+            Ok(Plan::Run(job)) => self.start(ctx, job),
+            Err(e) => self.fail(e),
+        }
+    }
+
+    fn start(&mut self, ctx: &Context, job: Job) {
+        self.info(job.describe());
+        let forge = Arc::clone(&ctx.forge);
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(create::run(forge.as_ref(), job));
+        });
+        self.job = Some(rx);
+    }
+
+    /// Picks up a finished job without waiting. Returns whether the screen changed.
+    pub fn poll_job(&mut self, ctx: &Context) -> bool {
+        let Some(rx) = &self.job else {
+            return false;
+        };
+        match rx.try_recv() {
+            Ok(done) => {
+                self.job = None;
+                self.finish(ctx, done);
+                true
+            }
+            Err(TryRecvError::Empty) => false,
+            Err(TryRecvError::Disconnected) => {
+                self.job = None;
+                self.fail(anyhow::anyhow!("the background task stopped unexpectedly"));
+                true
+            }
+        }
+    }
+
+    /// Blocks until the running job, if any, has finished. For tests.
+    pub fn wait_for_job(&mut self, ctx: &Context) {
+        if let Some(rx) = self.job.take() {
+            match rx.recv() {
+                Ok(done) => self.finish(ctx, done),
+                Err(_) => self.fail(anyhow::anyhow!("the background task stopped unexpectedly")),
+            }
+        }
+    }
+
+    fn finish(&mut self, ctx: &Context, done: Done) {
+        match done {
+            Done::Created(Ok(dest)) => self.created(ctx, dest),
+            Done::Created(Err(e)) => self.fail(e),
+            Done::Found { hub, query, hits } => match hits {
+                Ok(hits) if hits.is_empty() => self.info(format!("nothing found: {query}")),
+                Ok(hits) => {
+                    self.info(format!("{} found; choose with Up/Down", hits.len()));
+                    self.new.search = Some(SearchResults {
+                        hub,
+                        query,
+                        hits,
+                        cursor: 0,
+                    });
+                }
+                Err(e) => self.fail(e),
+            },
+        }
+        if self.new.open {
+            self.refresh_plan(ctx);
+        }
+    }
+
+    /// Back to the Active list with the cursor on the new entry, so Enter goes straight there.
+    fn created(&mut self, ctx: &Context, dest: PathBuf) {
+        self.new.open = false;
+        self.new.search = None;
+        self.query.clear();
+        if self.kind != ListKind::Active {
+            self.kind = ListKind::Active;
+            self.marks.clear();
+        }
+        self.reload(ctx);
+        self.cursor = self
+            .view
+            .iter()
+            .position(|v| self.list()[v.idx].path == dest)
+            .unwrap_or(0);
+        let name = dest.file_name().unwrap_or_default().to_string_lossy();
+        self.info(format!("created: {name}"));
     }
 
     fn move_cursor(&mut self, delta: isize) {

@@ -14,6 +14,7 @@
 | `Ctrl+A` | マーク済み(無ければ現在行)のアーカイブ状態を反転: Active ではアーカイブ、Archived では復元 |
 | `Ctrl+R` | マーク済み(無ければ現在行)をゴミ箱へ(両方の一覧で有効) |
 | `Ctrl+O` | 現在行のディレクトリをファイルマネージャで開く(macOS は `open`=Finder、他は `xdg-open`)。何も変更しない |
+| `Ctrl+N` | New ビュー(下記)を開く / 閉じる |
 | `Ctrl+P` | プレビュー切り替え: README(Markdown)⇄ ツリー。README が無ければツリーに自動フォールバック |
 | 左クリック | 一覧の行の上: カーソルをその行へ |
 | 右クリック | 一覧の行の上: その行のマークを付け外し(Tab と同じだが、カーソルは動かさない) |
@@ -28,6 +29,7 @@ Ctrl+R(ゴミ箱)と Ctrl+A(アーカイブ/復元)は、どちらもモード�
 - `tui/app.rs`: 端末に依存しない状態機械(`on_key` → `Outcome`)。テストはキーイベントを直接流す。
 - `tui/ui.rs`: 描画のみ。`TestBackend` で画面と色を検査できる。
 - `tui/{preview,markdown,tree}.rs`: プレビュー生成。Markdown は用語を最小限にした自前描画で、色は ANSI パレット+属性のみ。
+- `create.rs`: New ビューの中身。種類(`Recipe`)、入力から Enter の動作を決める `plan`、外部コマンドを使う仕事(`Job`)。外部コマンド自体は `services.rs` の `Forge`(本物は `SystemForge`、テストは `FakeForge`)。
 - `ops.rs`: アーカイブ・復元・削除の実行層。選択や確認とは独立しており、検証(対象が直下 1 階層か・通常ディレクトリか・移動先が空か)を全対象に行ってから実行する。新しい操作はここに足し、TUI のアクションとして繋ぐ。
 - 件数ガード(全件選択の拒否)は `App::execute` が `ops` の前に必ず通す。操作を足す場合も同じ経路に載せる。
 
@@ -74,6 +76,31 @@ ratatui と端末で文字幅の解釈が割れると、その行の残りがず
 - ヘルプの説明は Title Case の動詞句に揃える(macOS のメニュー項目の慣例。例: `Move to Trash`、`Open in Finder`。Linux では `Open in File Manager`)。例外は `Enter` の `cd`(コマンド名なので小文字のまま)。切り替え系は `Toggle List: Active/Archived` のように「対象: 候補」の形にする(プレビューの候補名は、ペインの見出しと同じ `README`/`Tree`)。`Ctrl+A` だけは今の一覧でする動作(`Archive`/`Restore`)を出す。
 - 実端末テスト(`tests/cli.rs`)のマウス座標は `FIRST_LIST_ROW` 1 か所に集約している。タイトル周りの行数を変えたらこの定数を直す。
 - 回帰テスト: `the_title_keeps_its_layout_when_the_mode_changes`、`the_title_has_room_before_the_tabs_and_a_blank_row_above_the_content`、`help_takes_the_keys_until_it_is_closed`。
+
+## New ビュー(作成と clone)
+
+`init`・`clone` サブコマンドを TUI に統合したもの(ユーザー指示)。別ウィンドウにはせず、入力欄はそのまま使い、一覧とプレビューの場所に選択肢を出す。
+
+- `Ctrl+N` で開閉。入力中の文字は名前としてそのまま引き継ぐ。`Esc` も閉じる(このビューでは終了ではない)。タイトル行の `New` タブが反転し、プロンプトは `+ `。
+- 種類は `create::RECIPES` の順に Tab / Shift+Tab で選ぶ: Directory、Git (private)、Clone: GitHub / HF Model / HF Dataset / HF Space。
+- Enter の動作は入力で決まり(`create::plan`)、その内容を Enter の前に画面に出す(エラーなら赤で理由)。
+  - Directory: `<root>/<name>` を作る(同期)。
+  - Git (private): `gh repo create --private` → clone → 空の README で初回コミットと push(旧 `init --git` と同じ手順)。
+  - Clone: URL か `owner/name` ならそのまま clone。`/` を含まなければ検索し、結果を ↑↓ で選んで Enter で clone。検索結果は、検索した語と種類が今の入力と同じ間だけ有効(`NewForm::hits_for`)。
+- 検索は GitHub が `gh search repos --match=name`、Hugging Face は公開 API(`https://huggingface.co/api/{models,datasets,spaces}?search=`、認証不要)を curl で叩く。どちらも 30 件、HF は likes 順。
+- LFS: HF の clone のときだけ `Ctrl+L` で切り替え。既定はスキップ(`GIT_LFS_SKIP_SMUDGE=1`。ポインタだけ置く)。モデルの重みは数十 GB になり得るため(ユーザー指示で選択式に)。
+- 行き先が root かアーカイブに既にあれば拒否。上書きはしない。
+- 外部コマンドは別スレッドで実行し(`App::start` → `poll_job`)、同時に 1 つだけ。出力は捕まえて、失敗時は stderr の最終行を状態行に出す。git はプロンプトを出せないので `GIT_TERMINAL_PROMPT=0`、`GIT_SSH_COMMAND` が未設定なら `ssh -o BatchMode=yes`(パスフレーズ入力で固まらずに失敗させる)。
+- 終わると Active 一覧に戻り、カーソルは作ったディレクトリ。そのまま Enter で cd できる。
+- New ビューでは一覧の操作(Ctrl+R / Ctrl+A / Ctrl+O / Ctrl+T / Ctrl+P / Ctrl+Q)とマウスを無視する。隠れた一覧への誤操作を防ぐため。`?` のヘルプは New ビュー用の項目を出す。
+
+### 拡張
+
+種類を足すとき(例: `uv init` 済みの Python プロジェクト)は、`Recipe` に variant を足し、`label`・`hint`・`RECIPES`・`plan`(入力から何をするか)を埋め、外部コマンドが要るなら `Job` と `Forge` に手順を足す。Git 化と組み合わせたくなったら、`Recipe` を「土台(空 / Git)× 雛形(なし / Python …)」の 2 軸に分ける。
+
+### キーについて
+
+最初の指示は `Ctrl+I` で開いて `Ctrl+Enter` で作成だったが、端末では `Ctrl+I` は Tab(0x09)と同じで、`Ctrl+Enter` も多くの端末で Enter と区別できない(kitty keyboard protocol 対応端末のみ)。ユーザーと相談して `Ctrl+N`(New)と Enter にした。
 
 ## Enter で cd する仕組み
 

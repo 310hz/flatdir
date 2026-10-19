@@ -10,8 +10,7 @@ use flatdir::cmd;
 use flatdir::config::Config;
 use flatdir::context::Context;
 use flatdir::paths::Env;
-use flatdir::select::SkimSelector;
-use flatdir::services::{SystemOpener, SystemTrash, TtyPrompter, Zoxide};
+use flatdir::services::{SystemForge, SystemOpener, SystemTrash, Zoxide};
 
 #[derive(Parser)]
 #[command(
@@ -50,36 +49,18 @@ enum Command {
         #[arg(value_enum)]
         shell: Option<Shell>,
     },
-    /// Create a new directory under the root
-    Init {
-        name: String,
-        /// Also create a private GitHub repository and clone it
-        #[arg(long)]
-        git: bool,
-    },
-    /// git clone into the root
-    Clone {
-        /// Search GitHub and pick a repository
-        #[arg(short = 's')]
-        search: bool,
-        target: Option<String>,
-    },
 }
 
 fn context() -> Result<Context> {
     let env = Env::from_process()?;
     let config = Config::load(&env.config_path)?;
-    let selector = SkimSelector {
-        color: config.color.clone(),
-    };
     Ok(Context {
         env,
         config,
         interactive: std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
-        selector: Box::new(selector),
         trasher: Box::new(SystemTrash),
-        prompter: Box::new(TtyPrompter),
         opener: Box::new(SystemOpener),
+        forge: Arc::new(SystemForge),
         scores: Arc::new(Zoxide),
     })
 }
@@ -112,18 +93,6 @@ fn run(cli: Cli) -> Result<()> {
         }
         Some(Command::Shell { .. }) => print!("{}", flatdir::shell::SHELL_FUNCTION),
         Some(Command::Status) => println!("{}", cmd::status(&context()?)),
-        Some(Command::Init { name, git }) => {
-            let dest = cmd::init(&context()?, &name, git)?;
-            eprintln!(
-                "initialized{}: {}",
-                if git { " (git)" } else { "" },
-                dest.display()
-            );
-        }
-        Some(Command::Clone { search, target }) => {
-            let dest = cmd::clone(&context()?, search, target.as_deref())?;
-            eprintln!("cloned: {}", dest.display());
-        }
     }
     Ok(())
 }

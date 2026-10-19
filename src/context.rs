@@ -5,18 +5,16 @@ use anyhow::{Result, anyhow};
 
 use crate::config::Config;
 use crate::paths::Env;
-use crate::select::Selector;
-use crate::services::{Opener, Prompter, ScoreSource, Trasher};
+use crate::services::{Forge, Opener, ScoreSource, Trasher};
 
 pub struct Context {
     pub env: Env,
     pub config: Config,
     /// Destructive commands run only on an interactive terminal. Held as a value, not read from the environment, so tests can inject it.
     pub interactive: bool,
-    pub selector: Box<dyn Selector>,
     pub trasher: Box<dyn Trasher>,
-    pub prompter: Box<dyn Prompter>,
     pub opener: Box<dyn Opener>,
+    pub forge: Arc<dyn Forge>,
     pub scores: Arc<dyn ScoreSource>,
 }
 

@@ -1,22 +1,27 @@
 use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, Write};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, bail};
+
+use crate::create::{Hit, Hub};
 
 /// Boundary for side effects (external commands, prompts). Replaced by fakes in tests.
 pub trait Trasher {
     fn trash(&self, path: &Path) -> Result<()>;
 }
 
-pub trait Prompter {
-    fn confirm(&self, message: &str) -> bool;
-}
-
 pub trait Opener {
     fn open(&self, path: &Path) -> Result<()>;
+}
+
+/// Creating and cloning repositories, and searching for them. Runs on a worker thread.
+pub trait Forge: Send + Sync {
+    /// A private GitHub repository named `name`, cloned to `dest` with a first commit pushed.
+    fn new_github_repo(&self, name: &str, dest: &Path) -> Result<()>;
+    fn clone_repo(&self, url: &str, dest: &Path, skip_lfs: bool) -> Result<()>;
+    fn search(&self, hub: Hub, query: &str) -> Result<Vec<Hit>>;
 }
 
 pub trait ScoreSource: Send + Sync {
@@ -40,26 +45,6 @@ impl Trasher for SystemTrash {
         let result = trash::delete(path);
 
         result.with_context(|| format!("failed to move to trash: {}", path.display()))
-    }
-}
-
-/// Reads from /dev/tty rather than stdin, so prompting works even under a shell function that captures stdout.
-pub struct TtyPrompter;
-
-impl Prompter for TtyPrompter {
-    fn confirm(&self, message: &str) -> bool {
-        let Ok(tty) = OpenOptions::new().read(true).write(true).open("/dev/tty") else {
-            return false;
-        };
-        let mut out = &tty;
-        if write!(out, "{message} [y/N] ")
-            .and_then(|()| out.flush())
-            .is_err()
-        {
-            return false;
-        }
-        let mut answer = String::new();
-        BufReader::new(&tty).read_line(&mut answer).is_ok() && answer.trim() == "y"
     }
 }
 
@@ -131,4 +116,125 @@ impl Opener for SystemOpener {
         });
         Ok(())
     }
+}
+
+/// `gh`, `git` and `curl`, with their output captured: the TUI owns the terminal.
+pub struct SystemForge;
+
+const SEARCH_LIMIT: &str = "30";
+
+impl Forge for SystemForge {
+    fn new_github_repo(&self, name: &str, dest: &Path) -> Result<()> {
+        quiet(Command::new("gh").args(["repo", "create", name, "--private"]))?;
+        let ssh_url = quiet(
+            Command::new("gh").args(["repo", "view", name, "--json", "sshUrl", "-q", ".sshUrl"]),
+        )?;
+        if ssh_url.is_empty() {
+            bail!("could not determine the sshUrl of {name}");
+        }
+        quiet(git().args(["clone", "--"]).arg(&ssh_url).arg(dest))?;
+        let git_in = |args: &[&str]| quiet(git().args(args).current_dir(dest));
+        git_in(&["checkout", "-B", "main"])?;
+        fs::write(dest.join("README.md"), "")?;
+        git_in(&["add", "README.md"])?;
+        git_in(&["commit", "-m", "Initial commit"])?;
+        git_in(&["push", "-u", "origin", "main"])?;
+        Ok(())
+    }
+
+    fn clone_repo(&self, url: &str, dest: &Path, skip_lfs: bool) -> Result<()> {
+        let mut cmd = git();
+        if skip_lfs {
+            cmd.env("GIT_LFS_SKIP_SMUDGE", "1");
+        }
+        quiet(cmd.args(["clone", "--"]).arg(url).arg(dest))?;
+        Ok(())
+    }
+
+    fn search(&self, hub: Hub, query: &str) -> Result<Vec<Hit>> {
+        let kind = match hub {
+            Hub::GitHub => {
+                let json = quiet(Command::new("gh").args([
+                    "search",
+                    "repos",
+                    "--match=name",
+                    "--json",
+                    "fullName,stargazersCount,description",
+                    "--limit",
+                    SEARCH_LIMIT,
+                    "--",
+                    query,
+                ]))?;
+                return parse_github_hits(&json);
+            }
+            Hub::HfModel => "models",
+            Hub::HfDataset => "datasets",
+            Hub::HfSpace => "spaces",
+        };
+        // The Hub API is public for search; curl does the URL encoding of the query.
+        let json = quiet(
+            Command::new("curl")
+                .args(["-sSfL", "--max-time", "20", "-G"])
+                .arg(format!("https://huggingface.co/api/{kind}"))
+                .args(["--data-urlencode"])
+                .arg(format!("search={query}"))
+                .args(["-d", "sort=likes", "-d", "direction=-1", "-d"])
+                .arg(format!("limit={SEARCH_LIMIT}")),
+        )
+        .with_context(|| format!("Hugging Face {kind} search failed"))?;
+        parse_hf_hits(&json)
+    }
+}
+
+pub fn parse_github_hits(json: &str) -> Result<Vec<Hit>> {
+    let repos: Vec<serde_json::Value> = serde_json::from_str(json)?;
+    Ok(repos
+        .iter()
+        .filter_map(|r| {
+            Some(Hit {
+                id: r["fullName"].as_str()?.to_string(),
+                meta: format!("{} stars", r["stargazersCount"].as_u64().unwrap_or(0)),
+                description: r["description"].as_str().unwrap_or("").to_string(),
+            })
+        })
+        .collect())
+}
+
+pub fn parse_hf_hits(json: &str) -> Result<Vec<Hit>> {
+    let repos: Vec<serde_json::Value> = serde_json::from_str(json)?;
+    Ok(repos
+        .iter()
+        .filter_map(|r| {
+            Some(Hit {
+                id: r["id"].as_str()?.to_string(),
+                meta: format!("{} likes", r["likes"].as_u64().unwrap_or(0)),
+                description: String::new(),
+            })
+        })
+        .collect())
+}
+
+fn git() -> Command {
+    let mut cmd = Command::new("git");
+    // A password or passphrase prompt would draw over the TUI and wait forever; fail instead.
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    if std::env::var_os("GIT_SSH_COMMAND").is_none() {
+        cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
+    }
+    cmd
+}
+
+/// Runs without a terminal and returns stdout; on failure the error carries stderr's last line.
+fn quiet(cmd: &mut Command) -> Result<String> {
+    let program = cmd.get_program().to_string_lossy().into_owned();
+    let out = cmd
+        .stdin(Stdio::null())
+        .output()
+        .with_context(|| format!("{program} is not installed"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let last = stderr.lines().rev().map(str::trim).find(|l| !l.is_empty());
+        bail!("{program} failed: {}", last.unwrap_or("(no message)"));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
