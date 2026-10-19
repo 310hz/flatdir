@@ -25,7 +25,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Set the managed root (only one is supported)
+    /// Set the managed root
     Track { path: PathBuf },
     /// Unset the managed root
     Untrack,

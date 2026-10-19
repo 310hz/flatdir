@@ -16,7 +16,7 @@ There are no required external commands. Optional: `zoxide` (order by frecency),
 ## Usage
 
 ```sh
-flatdir track ~/workspace    # set the managed root (only one is supported)
+flatdir track ~/workspace    # set the managed root
 flatdir                      # open the TUI
 flatdir status               # show the root, directory/archive counts and optional commands
 flatdir init <name> [--git]  # create a directory (--git also creates a private GitHub repo)
