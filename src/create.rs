@@ -116,9 +116,9 @@ impl Job {
     /// Shown while the job runs.
     pub fn describe(&self) -> String {
         match self {
-            Self::NewGitHubRepo { name, .. } => format!("creating GitHub repository: {name} ..."),
-            Self::Clone { url, .. } => format!("cloning {url} ..."),
-            Self::Search { hub, query } => format!("searching {}: {query} ...", hub.label()),
+            Self::NewGitHubRepo { name, .. } => format!("creating GitHub repository: {name}"),
+            Self::Clone { url, .. } => format!("cloning {url}"),
+            Self::Search { hub, query } => format!("searching {}: {query}", hub.label()),
         }
     }
 }

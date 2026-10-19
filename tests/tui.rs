@@ -388,6 +388,10 @@ fn screen(buffer: &ratatui::buffer::Buffer) -> String {
         .join("\n")
 }
 
+fn last_row(buffer: &ratatui::buffer::Buffer) -> String {
+    screen(buffer).lines().last().unwrap().to_string()
+}
+
 #[test]
 fn help_lists_the_shortcuts_and_what_ctrl_a_does_in_each_list() {
     let (_sb, ctx, mut app) = setup();
@@ -1105,6 +1109,31 @@ fn git_kind_creates_a_private_repository_in_the_background() {
     assert_eq!(sb.forge.calls(), ["new repo"]);
     assert_eq!(app.current().unwrap().name, "repo");
     assert!(!app.new.open);
+}
+
+#[test]
+fn a_running_job_shows_a_spinner_until_it_finishes() {
+    let (_sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('n'));
+    choose_kind(&mut app, &ctx, 2);
+    type_name(&mut app, &ctx, "owner/tool");
+    app.on_key(&ctx, key(KeyCode::Enter));
+
+    let status = last_row(&render(&mut app, 100, 24));
+    let spinner = status.chars().next().unwrap();
+    assert!(('\u{2800}'..='\u{28ff}').contains(&spinner), "{status}");
+    assert!(
+        status.contains("cloning git@github.com:owner/tool.git 0s"),
+        "{status}"
+    );
+
+    // Leaving the New view does not hide that something is still running.
+    app.on_key(&ctx, key(KeyCode::Esc));
+    assert!(last_row(&render(&mut app, 100, 24)).contains("cloning"));
+
+    app.wait_for_job(&ctx);
+    let status = last_row(&render(&mut app, 100, 24));
+    assert!(status.starts_with("created: tool"), "{status}");
 }
 
 #[test]

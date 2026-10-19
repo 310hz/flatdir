@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::time::{Duration, Instant};
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config as MatcherConfig, Matcher, Utf32Str};
@@ -98,6 +99,12 @@ pub struct View {
     pub hits: Vec<u32>,
 }
 
+struct Running {
+    rx: Receiver<Done>,
+    label: String,
+    since: Instant,
+}
+
 pub struct App {
     pub kind: ListKind,
     pub preview_mode: PreviewMode,
@@ -114,7 +121,7 @@ pub struct App {
     /// Paths on screen are shortened to `~/...` with this.
     pub home: PathBuf,
     /// A create, clone or search running on a worker thread; one at a time.
-    job: Option<Receiver<Done>>,
+    job: Option<Running>,
     /// First visible row of the preview. Reset by the UI when the previewed entry or mode changes.
     pub preview_scroll: u16,
     active: Vec<Entry>,
@@ -391,9 +398,16 @@ impl App {
         self.job.is_some()
     }
 
+    /// What the running job is doing, and for how long.
+    pub fn running(&self) -> Option<(&str, Duration)> {
+        self.job
+            .as_ref()
+            .map(|job| (job.label.as_str(), job.since.elapsed()))
+    }
+
     fn submit_new(&mut self, ctx: &Context) {
         if self.is_busy() {
-            return self.info("still working on the previous request");
+            return;
         }
         match self.new_plan(ctx) {
             Ok(Plan::MakeDir(dest)) => match fs::create_dir(&dest) {
@@ -408,21 +422,26 @@ impl App {
     }
 
     fn start(&mut self, ctx: &Context, job: Job) {
-        self.info(job.describe());
+        self.status = None;
+        let label = job.describe();
         let forge = Arc::clone(&ctx.forge);
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let _ = tx.send(create::run(forge.as_ref(), job));
         });
-        self.job = Some(rx);
+        self.job = Some(Running {
+            rx,
+            label,
+            since: Instant::now(),
+        });
     }
 
     /// Picks up a finished job without waiting. Returns whether the screen changed.
     pub fn poll_job(&mut self, ctx: &Context) -> bool {
-        let Some(rx) = &self.job else {
+        let Some(job) = &self.job else {
             return false;
         };
-        match rx.try_recv() {
+        match job.rx.try_recv() {
             Ok(done) => {
                 self.job = None;
                 self.finish(ctx, done);
@@ -439,8 +458,8 @@ impl App {
 
     /// Blocks until the running job, if any, has finished. For tests.
     pub fn wait_for_job(&mut self, ctx: &Context) {
-        if let Some(rx) = self.job.take() {
-            match rx.recv() {
+        if let Some(job) = self.job.take() {
+            match job.rx.recv() {
                 Ok(done) => self.finish(ctx, done),
                 Err(_) => self.fail(anyhow::anyhow!("the background task stopped unexpectedly")),
             }

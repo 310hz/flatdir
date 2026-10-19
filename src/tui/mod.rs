@@ -118,11 +118,13 @@ pub fn run(ctx: &Context) -> Result<Option<PathBuf>> {
         let wait = if waiting_for_scores {
             Duration::from_millis(5)
         } else if app.is_busy() {
-            Duration::from_millis(50)
+            Duration::from_millis(ui::SPINNER_FRAME_MS as u64)
         } else {
             Duration::from_millis(250)
         };
         if !event::poll(wait)? {
+            // The spinner and the elapsed seconds move only when redrawn.
+            dirty |= app.is_busy();
             continue;
         }
         match event::read()? {

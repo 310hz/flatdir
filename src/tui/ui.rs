@@ -434,7 +434,22 @@ fn draw_preview(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache, area
     frame.render_widget(paragraph.scroll((app.preview_scroll, 0)), inner);
 }
 
+/// Braille dots are narrow in every terminal (not East Asian Ambiguous), unlike `◐` and friends.
+const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+pub const SPINNER_FRAME_MS: u128 = 80;
+
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
+    if let Some((label, elapsed)) = app.running() {
+        let spinner = SPINNER[(elapsed.as_millis() / SPINNER_FRAME_MS) as usize % SPINNER.len()];
+        let line = Line::from(vec![
+            Span::raw(format!("{spinner} {} ", text::sanitize(label))),
+            Span::styled(
+                format!("{}s", elapsed.as_secs()),
+                Style::default().add_modifier(Modifier::DIM),
+            ),
+        ]);
+        return frame.render_widget(Paragraph::new(line), area);
+    }
     let line = match &app.status {
         Some(s) => {
             let style = if s.is_error {
