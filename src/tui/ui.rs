@@ -137,11 +137,11 @@ fn help_items(kind: ListKind) -> [(&'static str, &'static str); 10] {
         ("Enter", "cd"),
         ("Tab / Shift+Tab", "Mark"),
         ("Ctrl+Q", "Clear Marks"),
-        ("Ctrl+A", "Toggle Window Active/Archived"),
+        ("Ctrl+A", "Toggle List: Active/Archived"),
         ("Ctrl+T", toggle_label(kind)),
         ("Ctrl+R", "Move to Trash"),
         ("Ctrl+O", OPEN_LABEL),
-        ("Ctrl+P", "Toggle Preview"),
+        ("Ctrl+P", "Toggle Preview: README/Tree"),
         ("Ctrl+U", "Clear Query"),
         ("Esc", "Quit"),
     ]

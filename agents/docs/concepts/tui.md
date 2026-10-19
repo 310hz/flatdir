@@ -71,7 +71,7 @@ ratatui と端末で文字幅の解釈が割れると、その行の残りがず
 - 縦の並びは「タイトル行 / 空き行 / クエリ行 / 一覧 / ステータス行」。タイトル行は左に `flatdir` と Active / Archived のタブ・件数、右端に `? Help`。プログラム名とタブの間は `TITLE_GAP`(4 桁)空ける。
 - 件数と「N marked」は固定幅で確保し、モードやマークでタイトル行の項目が動かないようにする。
 - ヘルプは画面中央に重ねる枠(`Clear` で下を消してから描く)。開いている間は、隠れた一覧への操作(特に Ctrl+R / Ctrl+T)が誤って走らないよう、閉じる・終了以外の入力をすべて捨てる。
-- ヘルプの説明は Title Case の動詞句に揃える(macOS のメニュー項目の慣例。例: `Move to Trash`、`Open in Finder`。Linux では `Open in File Manager`)。例外は `Enter` の `cd`(コマンド名なので小文字のまま)。`Ctrl+T` だけは今の一覧でする動作(`Archive`/`Restore`)を出す。
+- ヘルプの説明は Title Case の動詞句に揃える(macOS のメニュー項目の慣例。例: `Move to Trash`、`Open in Finder`。Linux では `Open in File Manager`)。例外は `Enter` の `cd`(コマンド名なので小文字のまま)。切り替え系は `Toggle List: Active/Archived` のように「対象: 候補」の形にする(プレビューの候補名は、ペインの見出しと同じ `README`/`Tree`)。`Ctrl+T` だけは今の一覧でする動作(`Archive`/`Restore`)を出す。
 - 実端末テスト(`tests/cli.rs`)のマウス座標は `FIRST_LIST_ROW` 1 か所に集約している。タイトル周りの行数を変えたらこの定数を直す。
 - 回帰テスト: `the_title_keeps_its_layout_when_the_mode_changes`、`the_title_has_room_before_the_tabs_and_a_blank_row_above_the_content`、`help_takes_the_keys_until_it_is_closed`。
 ## Enter で cd する仕組み

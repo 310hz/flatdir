@@ -603,11 +603,11 @@ fn help_opens_on_top_and_shows_every_item_whole() {
         "Enter             cd",
         "Tab / Shift+Tab   Mark",
         "Ctrl+Q            Clear Marks",
-        "Ctrl+A            Toggle Window Active/Archived",
+        "Ctrl+A            Toggle List: Active/Archived",
         "Ctrl+T            Archive",
         "Ctrl+R            Move to Trash",
         "Ctrl+O            Open in",
-        "Ctrl+P            Toggle Preview",
+        "Ctrl+P            Toggle Preview: README/Tree",
         "Ctrl+U            Clear Query",
         "Esc               Quit",
     ];
