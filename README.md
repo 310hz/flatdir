@@ -10,11 +10,16 @@ Requires a Rust toolchain (`rustup`).
 cargo install --git https://github.com/310hz/flatdir
 ```
 
-Then choose the directory to manage, and add the shell function that lets Enter `cd` (bash and zsh) to `.zshrc` or `.bashrc`:
+Add this line to `.zshrc` or `.bashrc`. It loads the shell function that lets Enter `cd`:
+
+```sh
+eval "$(flatdir shell)"
+```
+
+Then choose the directory to manage (once):
 
 ```sh
 flatdir root ~/workspace
-eval "$(flatdir shell)"
 ```
 
 No other commands are required. Some features use them when available: `zoxide` (order by frecency), `git`, `gh` (private GitHub repositories, GitHub search), `curl` (Hugging Face search) and `git-lfs`.
