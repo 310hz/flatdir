@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config as MatcherConfig, Matcher, Utf32Str};
 use ratatui::crossterm::event::{
-    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use ratatui::layout::{Position, Rect};
 
@@ -145,16 +145,39 @@ impl App {
         }
     }
 
-    /// The wheel moves the cursor over the list and scrolls the preview over the preview pane.
+    /// Mouse input, routed by the pane under the pointer:
+    /// - wheel over the list moves the cursor, over the preview scrolls it;
+    /// - left click on a list row moves the cursor there;
+    /// - right click on a list row marks / unmarks it (what Tab does, without moving on).
+    ///
     /// Returns whether the screen needs a redraw: terminals also report plain mouse motion, which
     /// must not cost a redraw each time.
     pub fn on_mouse(&mut self, event: MouseEvent) -> bool {
+        let at = Position::new(event.column, event.row);
         let direction = match event.kind {
             MouseEventKind::ScrollUp => -1,
             MouseEventKind::ScrollDown => 1,
+            MouseEventKind::Down(MouseButton::Left) => {
+                return match self.row_at(at) {
+                    Some(index) if index != self.cursor => {
+                        self.cursor = index;
+                        true
+                    }
+                    _ => false,
+                };
+            }
+            MouseEventKind::Down(MouseButton::Right) => {
+                return match self.row_at(at) {
+                    Some(index) => {
+                        self.cursor = index;
+                        self.toggle_mark_at(index);
+                        true
+                    }
+                    None => false,
+                };
+            }
             _ => return false,
         };
-        let at = Position::new(event.column, event.row);
         if self.panes.preview.is_some_and(|p| p.contains(at)) {
             let next = self.preview_scroll as isize + direction * PREVIEW_WHEEL_STEP;
             self.preview_scroll = next.clamp(0, u16::MAX as isize) as u16;
@@ -219,13 +242,27 @@ impl App {
         self.cursor = (self.cursor as isize + delta).clamp(0, last) as usize;
     }
 
-    fn mark_and_move(&mut self, delta: isize) {
-        if let Some(path) = self.current().map(|e| e.path.clone())
-            && !self.marks.remove(&path)
-        {
-            self.marks.insert(path);
+    fn toggle_mark_at(&mut self, index: usize) {
+        if let Some(view) = self.view.get(index) {
+            let path = self.list()[view.idx].path.clone();
+            if !self.marks.remove(&path) {
+                self.marks.insert(path);
+            }
         }
+    }
+
+    fn mark_and_move(&mut self, delta: isize) {
+        self.toggle_mark_at(self.cursor);
         self.move_cursor(delta);
+    }
+
+    /// Index into `view` of the list row under `at`, if there is one.
+    fn row_at(&self, at: Position) -> Option<usize> {
+        if !self.panes.list.contains(at) {
+            return None;
+        }
+        let index = self.offset + (at.y - self.panes.list.y) as usize;
+        (index < self.view.len()).then_some(index)
     }
 
     fn toggle_list(&mut self, ctx: &Context) {

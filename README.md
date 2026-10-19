@@ -39,6 +39,8 @@ flatdir untrack              # unset the managed root
 | `Ctrl+P` | switch the preview: README (Markdown) <-> file tree. Without a README the tree is shown |
 | `Ctrl+U` | clear the filter |
 | mouse wheel | over the list: move the cursor; over the preview: scroll it |
+| left click | on a list row: move the cursor there |
+| right click | on a list row: mark / unmark it (like `Tab`, without moving on) |
 | `Esc` / `Ctrl+C` | quit |
 
 While the TUI is open the terminal reports the mouse to flatdir, so selecting text with the mouse needs `Shift` (or `Option` in some terminals) held down.

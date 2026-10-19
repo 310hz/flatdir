@@ -33,8 +33,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
     // Never let the header take more than half of the screen, so the list always stays visible.
     let max_header = (frame.area().height as usize / 2).max(2);
     let header_height = (1 + hints.len()).min(max_header) as u16;
-    let [header, query, body, status] = Layout::vertical([
+    let [header, _spacer, query, body, status] = Layout::vertical([
         Constraint::Length(header_height),
+        Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(1),
@@ -91,19 +92,27 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
         };
         Span::styled(format!(" {label} "), style)
     };
-    let mut title = vec![
+    // Everything that changes with the mode or the data is padded to its widest variant, so the
+    // header never moves and never changes its number of rows (which would shift the content below).
+    let marked = if app.marks.is_empty() {
+        String::new()
+    } else {
+        format!("{} marked", app.marks.len())
+    };
+    let title = vec![
         Span::styled("flatdir ", bold()),
         tab("Tracked", app.kind == ListKind::Tracked),
         Span::raw(" "),
         tab("Archived", app.kind == ListKind::Archived),
-        Span::styled(format!("  {}/{}", app.view.len(), app.list().len()), dim()),
-    ];
-    if !app.marks.is_empty() {
-        title.push(Span::styled(
-            format!("  {} marked", app.marks.len()),
+        Span::styled(
+            format!("  {:>4}/{:<4}", app.view.len(), app.list().len()),
+            dim(),
+        ),
+        Span::styled(
+            format!("  {marked:<COUNT_WIDTH$}"),
             Style::default().fg(MARK_COLOR).add_modifier(Modifier::BOLD),
-        ));
-    }
+        ),
+    ];
 
     let other_list = match app.kind {
         ListKind::Tracked => "Archived",
@@ -113,6 +122,9 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
         PreviewMode::Markdown => "Markdown",
         PreviewMode::Tree => "Tree",
     };
+    let other_list = pad_to_longest(other_list, &["Archived", "Tracked"]);
+    let toggle = pad_to_longest(toggle_label(app.kind), &["Archive", "Restore"]);
+    let preview_name = pad_to_longest(preview_name, &["Markdown", "Tree"]);
     let item = |key: &'static str, label: String| {
         vec![
             Span::styled(key, bold()),
@@ -122,8 +134,8 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
     let items = vec![
         item("Enter", "cd".into()),
         item("Tab", "mark".into()),
-        item("Ctrl+A", other_list.into()),
-        item("Ctrl+T", toggle_label(app.kind).into()),
+        item("Ctrl+A", other_list),
+        item("Ctrl+T", toggle),
         item("Ctrl+R", "Trash".into()),
         item("Ctrl+O", "open".into()),
         item("Ctrl+P", format!("preview: {preview_name}")),
@@ -131,6 +143,16 @@ fn header_lines(app: &App, width: usize) -> (Line<'static>, Vec<Line<'static>>) 
     ];
 
     (Line::from(title), flow(items, width))
+}
+
+/// Room reserved for "NNN marked".
+const COUNT_WIDTH: usize = 10;
+
+/// Pads `label` with spaces to the width of the longest of `variants`.
+fn pad_to_longest(label: &str, variants: &[&str]) -> String {
+    let longest = variants.iter().map(|v| v.width()).max().unwrap_or(0);
+    let pad = longest.saturating_sub(label.width());
+    format!("{label}{}", " ".repeat(pad))
 }
 
 /// Packs items into rows no wider than `width`, breaking only between items.

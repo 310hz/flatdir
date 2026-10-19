@@ -397,3 +397,24 @@ fn mouse_reporting_is_enabled_only_while_the_tui_runs() {
     let off = text.rfind("\x1b[?1000l").expect("mouse reporting restored");
     assert!(on < off);
 }
+
+/// SGR mouse reports: button 0 = left, 2 = right; `M` = press, `m` = release; coordinates are 1-based.
+/// At 100 columns the header takes 3 rows, then a blank row and the query line, so the list starts on row 6.
+#[test]
+fn clicking_a_row_moves_the_cursor_and_right_clicking_marks_it() {
+    let sb = Sandbox::new();
+    fs::create_dir_all(sb.root.join("gamma")).unwrap();
+    sb.track();
+
+    let left_click_second_row = "\x1b[<0;5;7M\x1b[<0;5;7m|\r";
+    let text = sb.run_in_pty(&[], &[], "alpha", left_click_second_row);
+    assert!(
+        text.contains(sb.root.join("beta").to_str().unwrap()),
+        "{text}"
+    );
+
+    // Right click marks the second row; Ctrl+T then archives exactly the marked entry.
+    sb.run_in_pty(&[], &[], "alpha", "\x1b[<2;5;7M\x1b[<2;5;7m|\x14|\x03");
+    assert_eq!(sb.names(&sb.root), ["alpha", "gamma"]);
+    assert_eq!(sb.names(&sb.archive_dir()), ["beta"]);
+}

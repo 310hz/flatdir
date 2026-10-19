@@ -621,13 +621,14 @@ fn the_preview_keeps_a_gap_from_the_vertical_line() {
         .chunks(width)
         .map(|r| r.iter().map(|c| c.symbol()).collect())
         .collect();
-    let border_x = rows[4]
+    let first = app.panes.list.y as usize;
+    let border_x = rows[first]
         .iter()
         .position(|s| *s == "│")
         .expect("vertical line on the first list row");
 
     let mut checked = 0;
-    for row in &rows[5..18] {
+    for row in &rows[first + 1..first + 14] {
         assert_eq!(row[border_x], "│", "the separator runs the full height");
         let gap = flatdir::tui::ui::PREVIEW_PAD_LEFT as usize;
         assert!(
@@ -777,4 +778,165 @@ fn without_a_preview_pane_the_wheel_always_drives_the_list() {
     let row = app.panes.list.y;
     wheel(&mut app, true, 45, row);
     assert_eq!(app.cursor, 1);
+}
+
+/// Finds `needle` in the rendered screen: (row, column), both 0-based.
+fn find_on_screen(text: &str, needle: &str) -> Option<(usize, usize)> {
+    text.lines()
+        .enumerate()
+        .find_map(|(row, line)| line.find(needle).map(|col| (row, col)))
+}
+
+/// The header must not move or change height when the mode changes, because that would shift
+/// everything below it.
+#[test]
+fn the_header_keeps_its_layout_when_the_mode_changes() {
+    const KEYS: [&str; 9] = [
+        "Enter", "Tab", "Ctrl+A", "Ctrl+T", "Ctrl+R", "Ctrl+O", "Ctrl+P", "Esc", ">",
+    ];
+    for width in [50, 60, 80, 100, 140] {
+        let (sb, ctx, mut app) = setup();
+        fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
+        let snapshot = |app: &mut App| {
+            let text = screen(&render(app, width, 24));
+            let keys: Vec<_> = KEYS.iter().map(|k| find_on_screen(&text, k)).collect();
+            (keys, app.panes.list.y)
+        };
+        let baseline = snapshot(&mut app);
+
+        app.on_key(&ctx, ctrl('p'));
+        assert_eq!(
+            snapshot(&mut app),
+            baseline,
+            "width {width}: Ctrl+P moved the header"
+        );
+        app.on_key(&ctx, ctrl('p'));
+
+        app.on_key(&ctx, key(KeyCode::Tab));
+        assert_eq!(
+            snapshot(&mut app),
+            baseline,
+            "width {width}: marking moved the header"
+        );
+
+        app.on_key(&ctx, ctrl('a'));
+        assert_eq!(
+            snapshot(&mut app),
+            baseline,
+            "width {width}: Ctrl+A moved the header"
+        );
+
+        app.on_key(&ctx, ctrl('p'));
+        assert_eq!(
+            snapshot(&mut app),
+            baseline,
+            "width {width}: both changed, header moved"
+        );
+    }
+}
+
+#[test]
+fn a_blank_row_separates_the_navigation_from_the_query_line() {
+    let (_sb, _ctx, mut app) = setup();
+    for width in [50, 100] {
+        let text = screen(&render(&mut app, width, 24));
+        let rows: Vec<&str> = text.lines().collect();
+        let query = rows
+            .iter()
+            .position(|r| r.starts_with('>'))
+            .expect("query line");
+        assert!(
+            rows[query - 1].trim().is_empty(),
+            "width {width}: no blank row above the query:\n{text}"
+        );
+        assert!(
+            !rows[query - 2].trim().is_empty(),
+            "width {width}: the navigation is right above the gap"
+        );
+    }
+}
+
+fn click(app: &mut App, button: MouseButton, column: u16, row: u16) -> bool {
+    app.on_mouse(MouseEvent {
+        kind: MouseEventKind::Down(button),
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    })
+}
+
+#[test]
+fn left_click_moves_the_cursor_to_the_clicked_row() {
+    let (_sb, _ctx, mut app) = setup();
+    render(&mut app, 100, 20);
+    let list = app.panes.list;
+    let preview_x = app.panes.preview.unwrap().x + 5;
+
+    assert!(click(&mut app, MouseButton::Left, list.x + 3, list.y + 2));
+    assert_eq!(app.current().unwrap().name, "gamma");
+    assert!(
+        !click(&mut app, MouseButton::Left, list.x + 3, list.y + 2),
+        "same row: nothing to redraw"
+    );
+
+    // Below the last entry, in the preview and in the header: nothing happens.
+    assert!(!click(&mut app, MouseButton::Left, list.x + 3, list.y + 8));
+    assert!(!click(&mut app, MouseButton::Left, preview_x, list.y));
+    assert!(!click(&mut app, MouseButton::Left, 3, 0));
+    assert_eq!(app.current().unwrap().name, "gamma");
+    assert!(app.marks.is_empty(), "a left click never marks");
+}
+
+#[test]
+fn clicking_accounts_for_a_scrolled_list() {
+    let (sb, ctx, _app) = setup();
+    for i in 0..30 {
+        fs::create_dir_all(sb.root.join(format!("dir{i:02}"))).unwrap();
+    }
+    let mut app = App::new(&ctx).unwrap();
+    for _ in 0..25 {
+        app.on_key(&ctx, key(KeyCode::Down));
+    }
+    render(&mut app, 100, 16);
+    assert!(app.offset > 0, "the list is scrolled");
+
+    let list = app.panes.list;
+    let expected = app.offset + 1;
+    click(&mut app, MouseButton::Left, list.x + 3, list.y + 1);
+    assert_eq!(app.cursor, expected);
+}
+
+#[test]
+fn right_click_marks_the_clicked_row_like_tab_but_stays_put() {
+    let (sb, ctx, mut app) = setup();
+    render(&mut app, 100, 20);
+    let list = app.panes.list;
+
+    assert!(click(&mut app, MouseButton::Right, list.x + 3, list.y + 1));
+    assert_eq!(app.marks.len(), 1);
+    assert!(app.marks.contains(&sb.root.join("beta")));
+    assert_eq!(
+        app.current().unwrap().name,
+        "beta",
+        "the cursor goes to the clicked row, not past it"
+    );
+
+    assert!(click(&mut app, MouseButton::Right, list.x + 3, list.y + 2));
+    assert_eq!(app.marks.len(), 2);
+
+    assert!(click(&mut app, MouseButton::Right, list.x + 3, list.y + 1));
+    assert!(
+        !app.marks.contains(&sb.root.join("beta")),
+        "a second right click unmarks"
+    );
+
+    assert!(
+        !click(&mut app, MouseButton::Right, list.x + 3, list.y + 9),
+        "no row there"
+    );
+    assert_eq!(app.marks.len(), 1);
+
+    // Marks made with the mouse are what the keyboard actions use.
+    app.on_key(&ctx, ctrl('t'));
+    assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
 }
