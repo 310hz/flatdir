@@ -1,6 +1,6 @@
 # AGENTS.md
 
-管理 root(1 つ)直下のディレクトリを TUI で選んで移動・アーカイブ・削除する CLI `flatdir`。dotfiles にあった sh 実装(`src/flatdir`)の Rust 再実装。ユーザーは Rust に不慣れなので、構成や手順は丁寧に説明する。
+管理 root(1 つ)直下のディレクトリを TUI で選んで移動・アーカイブ・削除する CLI `flatdir`。もとはユーザーの dotfiles にあった bash 実装を、Rust で書き直して独立させたリポジトリ(経緯は [history.md](agents/docs/concepts/history.md))。ユーザーは Rust に不慣れなので、構成や手順は丁寧に説明する。
 
 ## 最重要: 実ディレクトリを移動・削除するツール
 
@@ -19,6 +19,11 @@
 - 起動速度は最優先(最初のフレームまで数 ms)。起動経路にサブプロセスや重い読み込みを足さない([concepts/tui.md](agents/docs/concepts/tui.md))。
 - 外部コマンドに依存しない方針。必須コマンドは無く、`zoxide`・`eza`・`gh`・`git` は任意機能のためだけに使う。
 - 公開は `cargo install --git <URL>` 程度で、crates.io には出さない。
+
+## 作業環境の注意
+
+- `agents/refs/` はコミットしない(ローカル専用。`.gitignore` 済み)。旧 shell 版のソースが置いてあるが、無くても [history.md](agents/docs/concepts/history.md) から元の場所(dotfiles の git 履歴)を辿れる。
+- ディレクトリを移動したら `cargo clean` する。`target/` に絶対パスが残り、実バイナリのテストが壊れる([history.md](agents/docs/concepts/history.md) の 6)。
 
 ## ドキュメント
 
