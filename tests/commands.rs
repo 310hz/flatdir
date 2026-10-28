@@ -343,7 +343,7 @@ fn search_results_are_parsed_from_gh_and_the_hugging_face_api() {
 }
 
 #[test]
-fn config_ignores_unknown_legacy_keys_and_reads_sound() {
+fn config_ignores_unknown_legacy_keys() {
     let sb = Sandbox::new();
     fs::create_dir_all(sb.config_path.parent().unwrap()).unwrap();
     fs::write(
@@ -353,8 +353,6 @@ fn config_ignores_unknown_legacy_keys_and_reads_sound() {
     .unwrap();
     let config = Config::load(&sb.config_path).unwrap();
     assert_eq!(config.root.as_deref(), Some(Path::new("/x")));
-    assert!(config.sound);
-    assert!(!Config::default().sound, "sound is opt-in");
 }
 
 #[test]

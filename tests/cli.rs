@@ -300,7 +300,7 @@ fn tab_marks_several_rows_for_one_action() {
     let sb = Sandbox::new();
     fs::create_dir_all(sb.root.join("gamma")).unwrap();
     sb.track();
-    sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x01|\x03");
+    sb.run_in_pty(&[], &[], "alpha", "\t|\x1b[B|\t|\x01|\x03");
     assert_eq!(sb.archived(), ["alpha", "beta"]);
 }
 
@@ -363,7 +363,7 @@ fn the_screen_uses_only_palette_colors() {
         "# Title\n\n`code` **bold**\n",
     )
     .unwrap();
-    let text = sb.run_in_pty(&[], &[], "alpha", "\t|\x03");
+    let text = sb.run_in_pty(&[], &[], "alpha", "\t|\x1b[B|\x03");
     assert!(
         text.contains("\x1b[7m"),
         "expected reverse video for the current row"
@@ -481,7 +481,7 @@ fn ctrl_q_resets_the_marks_before_an_action() {
     fs::create_dir_all(sb.root.join("gamma")).unwrap();
     sb.track();
     // Mark alpha and beta (the cursor ends on gamma), reset with Ctrl+Q, then archive: only gamma moves.
-    sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x11|\x01|\x03");
+    sb.run_in_pty(&[], &[], "alpha", "\t|\x1b[B|\t|\x1b[B|\x11|\x01|\x03");
     assert_eq!(sb.archived(), ["gamma"]);
 }
 

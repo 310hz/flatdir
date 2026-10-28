@@ -159,7 +159,7 @@ fn help_items(app: &App) -> Vec<(&'static str, &'static str)> {
     }
     vec![
         ("Enter", "cd"),
-        ("Tab / Shift+Tab", "Mark"),
+        ("Tab", "Mark"),
         ("Ctrl+Q", "Clear Marks"),
         ("Ctrl+T", "Toggle List: Active/Archived"),
         ("Ctrl+A", toggle_label(app.kind)),

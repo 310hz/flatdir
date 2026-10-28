@@ -31,7 +31,7 @@
 | 選択・移動・整理 | fzf と、`-a` `remove` `archive` `restore` の別コマンド | **1 つの TUI** に統合([spec/tui.md](../spec/tui.md)) |
 | 作成・clone | `init [--git]`、`clone [-s]`(同名は確認して上書き) | TUI の **New ビュー**に統合。Hugging Face の clone と検索を追加。**上書きはしない** |
 | アーカイブ | `~/.local/share/flatdir/archive/<HOME 相対パス>/<name>` へ移動し、各ディレクトリに目印 `.flatdir_archived` | **移動しない**。root に置いたまま状態ファイルに記録して一覧から隠す([spec/commands.md](../spec/commands.md))。目印は使わない |
-| 設定 | `src/flatdir/config`(`DIRS="a:b"`、リポジトリ内) | `~/.config/flatdir/config.toml`(`root`、`sound`)。**旧設定は読まない** |
+| 設定 | `src/flatdir/config`(`DIRS="a:b"`、リポジトリ内) | `~/.config/flatdir/config.toml`(`root`)。**旧設定は読まない** |
 | 外部コマンド | fzf、trash、rich、eza | 必須は無し(`trash` crate、自前 TUI、自前 Markdown 描画)。`zoxide`・`git`・`gh`・`curl`・`git-lfs` は任意機能 |
 | 並び順 | zoxide のスコア降順 | 同じ(起動を待たせないよう非同期で適用) |
 | 表示名 | root 1 つなら root 相対 | 同じ |

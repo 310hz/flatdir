@@ -16,7 +16,7 @@
 
 ## パスと設定
 
-- 設定: `$XDG_CONFIG_HOME/flatdir/config.toml`(既定 `~/.config/flatdir/`)。キーは `root`(文字列)と `sound`(真偽、既定 false。macOS で `Ctrl+R` のときにゴミ箱の効果音)。未知のキーは無視する。
+- 設定: `$XDG_CONFIG_HOME/flatdir/config.toml`(既定 `~/.config/flatdir/`)。キーは `root`(文字列)だけ。未知のキー(廃止した `sound` など)は無視する。
 - アーカイブ: ディレクトリは root 直下に置いたまま、一覧(Active)に出さないだけ。`ls` や Finder には普通に見える。どれがアーカイブ済みかは状態ファイル `$XDG_STATE_HOME/flatdir/state.json`(既定 `~/.local/state/`)に記録する。flatdir だけが書くファイルで、毎回全体を書き直す。
   - 形式: `{"archived": {"<絶対パス>": {"archived_at": <UNIX 秒>}}}`。キーが絶対パスなので、root を切り替えても別 root の同名ディレクトリは隠れない。項目を足すときは各エントリのオブジェクトに足す。
   - TUI の起動時と操作後に、今の root 直下に無くなった記録(手で消した・リネームした)を捨てる。リネームは削除と同じ扱いで、新しい名前は Active に出る。root を読めないときは何もしない。`status` は読むだけで捨てない。

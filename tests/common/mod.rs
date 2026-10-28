@@ -150,7 +150,6 @@ impl Sandbox {
             },
             config: Config {
                 root: Some(self.root.clone()),
-                sound: false,
             },
             interactive: true,
             trasher: Box::new(FakeTrasher {

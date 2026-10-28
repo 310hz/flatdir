@@ -19,7 +19,6 @@ use crate::context::Context;
 use crate::create::{self, Done, Hit, Hub, Job, Plan, RECIPES, Recipe};
 use crate::guard;
 use crate::ops;
-use crate::services::play_trash_sound;
 
 use super::preview::PreviewMode;
 
@@ -225,7 +224,7 @@ impl App {
     /// Mouse input, routed by the pane under the pointer:
     /// - wheel over the list moves the cursor, over the preview scrolls it;
     /// - left click on a list row moves the cursor there;
-    /// - right click on a list row marks / unmarks it (what Tab does, but the cursor stays put).
+    /// - right click on a list row marks / unmarks it (what Tab does to the current row).
     ///
     /// Returns whether the screen needs a redraw: terminals also report plain mouse motion, which
     /// must not cost a redraw each time.
@@ -339,8 +338,7 @@ impl App {
                 self.query.clear();
                 self.refilter();
             }
-            (KeyCode::Tab, _) => self.mark_and_move(1),
-            (KeyCode::BackTab, _) => self.mark_and_move(-1),
+            (KeyCode::Tab, _) => self.toggle_mark_at(self.cursor),
             (KeyCode::Down, _) => self.move_cursor(1),
             (KeyCode::Up, _) => self.move_cursor(-1),
             (KeyCode::PageDown, _) => self.move_cursor(10),
@@ -572,11 +570,6 @@ impl App {
         }
     }
 
-    fn mark_and_move(&mut self, delta: isize) {
-        self.toggle_mark_at(self.cursor);
-        self.move_cursor(delta);
-    }
-
     /// Index into `view` of the list row under `at`, if there is one.
     fn row_at(&self, at: Position) -> Option<usize> {
         if !self.panes.list.contains(at) {
@@ -656,14 +649,8 @@ impl App {
             return;
         };
         let result = match confirm.action {
-            Confirmable::Trash => {
-                let result = ops::remove(ctx, &confirm.targets)
-                    .map(|names| format!("moved to trash: {}", names.join(", ")));
-                if result.is_ok() && ctx.config.sound {
-                    play_trash_sound();
-                }
-                result
-            }
+            Confirmable::Trash => ops::remove(ctx, &confirm.targets)
+                .map(|names| format!("moved to trash: {}", names.join(", "))),
             // Dropped even when it fails: whatever made it fail (the directory was trashed or
             // restored meanwhile) would keep it failing, and block everything older.
             Confirmable::UndoArchive | Confirmable::UndoRestore => match self.history.pop() {

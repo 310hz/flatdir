@@ -7,9 +7,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub root: Option<PathBuf>,
-    /// Play the macOS "move to trash" sound after removing. Off by default.
-    #[serde(default)]
-    pub sound: bool,
 }
 
 impl Config {

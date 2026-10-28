@@ -40,6 +40,12 @@ fn shown(app: &App) -> Vec<String> {
         .collect()
 }
 
+/// Marks the current row and steps down, to mark several rows in a row.
+fn mark_down(app: &mut App, ctx: &Context) {
+    app.on_key(ctx, key(KeyCode::Tab));
+    app.on_key(ctx, key(KeyCode::Down));
+}
+
 fn setup() -> (Sandbox, Context, App) {
     let sb = Sandbox::new();
     let ctx = sb.ctx();
@@ -108,20 +114,22 @@ fn esc_and_ctrl_c_quit() {
 }
 
 #[test]
-fn tab_marks_and_moves_and_ctrl_t_resets_marks() {
+fn tab_toggles_the_current_mark_in_place_and_ctrl_t_resets_marks() {
     let (sb, ctx, mut app) = setup();
     app.on_key(&ctx, key(KeyCode::Tab));
+    assert_eq!(app.cursor, 0, "the cursor stays");
+    assert!(app.marks.contains(&sb.root.join("alpha")));
     app.on_key(&ctx, key(KeyCode::Tab));
-    assert_eq!(app.marks.len(), 2);
-    assert!(
-        app.marks.contains(&sb.root.join("alpha")) && app.marks.contains(&sb.root.join("beta"))
-    );
-    assert_eq!(app.current().unwrap().name, "gamma");
+    assert!(app.marks.is_empty(), "a second Tab unmarks");
 
+    mark_down(&mut app, &ctx);
+    mark_down(&mut app, &ctx);
+    assert_eq!(app.marks.len(), 2);
     app.on_key(&ctx, key(KeyCode::BackTab));
-    assert!(
-        app.marks.contains(&sb.root.join("gamma")),
-        "Shift+Tab marks too and moves up"
+    assert_eq!(
+        (app.marks.len(), app.cursor),
+        (2, 2),
+        "Shift+Tab does nothing in the list"
     );
 
     app.on_key(&ctx, ctrl('t'));
@@ -177,8 +185,8 @@ fn ctrl_a_archives_the_current_entry_when_nothing_is_marked() {
 #[test]
 fn ctrl_a_archives_all_marked_entries() {
     let (sb, ctx, mut app) = setup();
-    app.on_key(&ctx, key(KeyCode::Tab));
-    app.on_key(&ctx, key(KeyCode::Tab));
+    mark_down(&mut app, &ctx);
+    mark_down(&mut app, &ctx);
     app.on_key(&ctx, ctrl('a'));
     assert_eq!(sb.archived(), ["alpha", "beta"]);
     assert_eq!(shown(&app), ["gamma"]);
@@ -189,7 +197,7 @@ fn ctrl_a_archives_all_marked_entries() {
 fn marking_every_entry_is_refused_by_both_keys_and_nothing_moves() {
     let (sb, ctx, mut app) = setup();
     for _ in 0..3 {
-        app.on_key(&ctx, key(KeyCode::Tab));
+        mark_down(&mut app, &ctx);
     }
     assert_eq!(app.marks.len(), 3);
 
@@ -240,8 +248,8 @@ fn ctrl_r_moves_the_current_entry_to_the_trash_and_refreshes_the_list() {
 #[test]
 fn ctrl_r_trashes_every_marked_entry() {
     let (sb, ctx, mut app) = setup();
-    app.on_key(&ctx, key(KeyCode::Tab));
-    app.on_key(&ctx, key(KeyCode::Tab));
+    mark_down(&mut app, &ctx);
+    mark_down(&mut app, &ctx);
     app.on_key(&ctx, ctrl('r'));
     app.on_key(&ctx, key(KeyCode::Enter));
     assert_eq!(sb.names(&sb.trash_dir), ["0-alpha", "1-beta"]);
@@ -394,10 +402,10 @@ fn help_lists_the_shortcuts_and_what_ctrl_a_does_in_each_list() {
     let text = screen(&render(&mut app, 120, 20));
     for expected in [
         "Enter",
-        "Tab / Shift+Tab",
+        "Tab",
         "Ctrl+Q",
         "Ctrl+T",
-        "Ctrl+A            Archive",
+        "Ctrl+A   Archive",
         "Ctrl+R",
         "Ctrl+O",
         "Ctrl+P",
@@ -409,13 +417,13 @@ fn help_lists_the_shortcuts_and_what_ctrl_a_does_in_each_list() {
     app.on_key(&ctx, ctrl('t'));
     app.on_key(&ctx, key(KeyCode::Char('?')));
     let text = screen(&render(&mut app, 120, 20));
-    assert!(text.contains("Ctrl+A            Restore"), "{text}");
+    assert!(text.contains("Ctrl+A   Restore"), "{text}");
 }
 
 #[test]
 fn marked_rows_get_their_own_color_and_the_current_row_is_reversed() {
     let (_sb, ctx, mut app) = setup();
-    app.on_key(&ctx, key(KeyCode::Tab));
+    mark_down(&mut app, &ctx);
     let buffer = render(&mut app, 110, 20);
 
     let find = |sym: &str| {
@@ -445,7 +453,7 @@ fn only_terminal_palette_colors_are_ever_used() {
         "# T\n\n`code` and [link](x)\n\n- a\n- b\n\n> quote\n",
     )
     .unwrap();
-    app.on_key(&ctx, key(KeyCode::Tab));
+    mark_down(&mut app, &ctx);
     app.status = Some(flatdir_status_error());
 
     for mode_toggle in [false, true] {
@@ -601,18 +609,18 @@ fn help_opens_on_top_and_shows_every_item_whole() {
     let (_sb, ctx, mut app) = setup();
     app.on_key(&ctx, key(KeyCode::Char('?')));
     let items = [
-        "Enter             cd",
-        "Tab / Shift+Tab   Mark",
-        "Ctrl+Q            Clear Marks",
-        "Ctrl+T            Toggle List: Active/Archived",
-        "Ctrl+A            Archive",
-        "Ctrl+R            Move to Trash",
-        "Ctrl+Z            Undo Archive/Restore",
-        "Ctrl+O            Open in",
-        "Ctrl+P            Toggle Preview: README/Tree",
-        "Ctrl+N            New Directory or Clone",
-        "Ctrl+U            Clear Query",
-        "Esc               Quit",
+        "Enter    cd",
+        "Tab      Mark",
+        "Ctrl+Q   Clear Marks",
+        "Ctrl+T   Toggle List: Active/Archived",
+        "Ctrl+A   Archive",
+        "Ctrl+R   Move to Trash",
+        "Ctrl+Z   Undo Archive/Restore",
+        "Ctrl+O   Open in",
+        "Ctrl+P   Toggle Preview: README/Tree",
+        "Ctrl+N   New Directory or Clone",
+        "Ctrl+U   Clear Query",
+        "Esc      Quit",
     ];
     for width in [60, 80, 100, 140] {
         let text = screen(&render(&mut app, width, 24));
@@ -952,8 +960,8 @@ fn right_click_marks_the_clicked_row_and_leaves_the_cursor_alone() {
 #[test]
 fn ctrl_q_clears_every_mark_and_nothing_else() {
     let (sb, ctx, mut app) = setup();
-    app.on_key(&ctx, key(KeyCode::Tab));
-    app.on_key(&ctx, key(KeyCode::Tab));
+    mark_down(&mut app, &ctx);
+    mark_down(&mut app, &ctx);
     assert_eq!((app.marks.len(), app.cursor), (2, 2));
 
     app.on_key(&ctx, ctrl('q'));
@@ -1328,7 +1336,7 @@ fn the_dialog_names_what_it_will_do_and_cuts_long_lists() {
     app.on_key(&ctx, key(KeyCode::Esc));
 
     for _ in 0..25 {
-        app.on_key(&ctx, key(KeyCode::Tab));
+        mark_down(&mut app, &ctx);
     }
     app.on_key(&ctx, ctrl('a'));
     app.on_key(&ctx, ctrl('z'));
@@ -1347,8 +1355,8 @@ fn ctrl_z_undoes_archiving_and_restoring_one_step_at_a_time() {
     let (sb, ctx, mut app) = setup();
     fs::create_dir(sb.root.join("zeta")).unwrap();
     app.on_key(&ctx, ctrl('a'));
-    app.on_key(&ctx, key(KeyCode::Tab));
-    app.on_key(&ctx, key(KeyCode::Tab));
+    mark_down(&mut app, &ctx);
+    mark_down(&mut app, &ctx);
     app.on_key(&ctx, ctrl('a'));
     assert_eq!(sb.archived(), ["alpha", "beta", "gamma"]);
     app.on_key(&ctx, ctrl('t'));
