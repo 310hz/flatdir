@@ -1,9 +1,9 @@
+pub mod archive;
 pub mod candidates;
 pub mod cmd;
 pub mod config;
 pub mod context;
 pub mod create;
-pub mod fsops;
 pub mod guard;
 pub mod ops;
 pub mod paths;

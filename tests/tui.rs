@@ -130,29 +130,42 @@ fn tab_marks_and_moves_and_ctrl_t_resets_marks() {
 }
 
 #[test]
-fn the_archive_is_read_only_when_first_needed() {
-    let (sb, ctx, mut app) = setup();
-    fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
-    assert_eq!(
-        shown(&app),
-        ["alpha", "beta", "gamma"],
-        "archive not read at startup"
-    );
+fn archived_entries_stay_in_the_root_but_only_show_in_the_archived_list() {
+    let sb = Sandbox::new();
+    sb.archive(&["old"]);
+    let ctx = sb.ctx();
+    let mut app = App::new(&ctx).unwrap();
+    assert_eq!(shown(&app), ["alpha", "beta", "gamma"]);
     app.on_key(&ctx, ctrl('t'));
     assert_eq!(shown(&app), ["old"]);
     assert_eq!(
         app.on_key(&ctx, key(KeyCode::Enter)),
-        Outcome::Cd(sb.archive_dir().join("old"))
+        Outcome::Cd(sb.root.join("old"))
     );
     app.on_key(&ctx, ctrl('t'));
     assert_eq!(app.kind, ListKind::Active);
 }
 
 #[test]
+fn archives_deleted_by_hand_are_forgotten_at_startup() {
+    let sb = Sandbox::new();
+    sb.archive(&["kept", "gone"]);
+    fs::remove_dir(sb.root.join("gone")).unwrap();
+    App::new(&sb.ctx()).unwrap();
+    assert_eq!(sb.archived(), ["kept"]);
+
+    // A new directory with the old name is a new project, not the archive.
+    fs::create_dir(sb.root.join("gone")).unwrap();
+    let app = App::new(&sb.ctx()).unwrap();
+    assert_eq!(shown(&app), ["alpha", "beta", "gamma", "gone"]);
+}
+
+#[test]
 fn ctrl_a_archives_the_current_entry_when_nothing_is_marked() {
     let (sb, ctx, mut app) = setup();
     app.on_key(&ctx, ctrl('a'));
-    assert_eq!(sb.names(&sb.archive_dir()), ["alpha"]);
+    assert_eq!(sb.archived(), ["alpha"]);
+    assert!(sb.root.join("alpha").is_dir(), "it stays where it is");
     assert_eq!(shown(&app), ["beta", "gamma"], "the list is refreshed");
     assert!(
         app.status
@@ -167,7 +180,7 @@ fn ctrl_a_archives_all_marked_entries() {
     app.on_key(&ctx, key(KeyCode::Tab));
     app.on_key(&ctx, key(KeyCode::Tab));
     app.on_key(&ctx, ctrl('a'));
-    assert_eq!(sb.names(&sb.archive_dir()), ["alpha", "beta"]);
+    assert_eq!(sb.archived(), ["alpha", "beta"]);
     assert_eq!(shown(&app), ["gamma"]);
     assert!(app.marks.is_empty());
 }
@@ -177,7 +190,7 @@ fn ctrl_a_reports_leftovers_instead_of_deleting_them() {
     let (sb, ctx, mut app) = setup();
     fs::create_dir_all(sb.root.join("alpha/node_modules")).unwrap();
     app.on_key(&ctx, ctrl('a'));
-    assert!(sb.archive_dir().join("alpha/node_modules").is_dir());
+    assert!(sb.root.join("alpha/node_modules").is_dir());
     assert!(
         app.status
             .as_ref()
@@ -206,7 +219,7 @@ fn marking_every_entry_is_refused_by_both_keys_and_nothing_moves() {
             sb.names(&sb.root),
             [".hidden", "alpha", "beta", "file.txt", "gamma"]
         );
-        assert!(sb.names(&sb.trash_dir).is_empty() && !sb.archive_dir().exists());
+        assert!(sb.names(&sb.trash_dir).is_empty() && sb.archived().is_empty());
     }
 }
 
@@ -225,11 +238,11 @@ fn ctrl_r_moves_the_current_entry_to_the_trash_and_refreshes_the_list() {
             .text
             .starts_with("moved to trash: beta")
     );
-    assert!(!sb.archive_dir().exists(), "Ctrl+R never archives");
+    assert!(sb.archived().is_empty(), "Ctrl+R never archives");
 
     // The cursor stayed on the same row, which is now gamma; Ctrl+A then archives it.
     app.on_key(&ctx, ctrl('a'));
-    assert!(sb.archive_dir().join("gamma").is_dir());
+    assert_eq!(sb.archived(), ["gamma"]);
     assert_eq!(
         sb.names(&sb.trash_dir),
         ["0-beta"],
@@ -250,16 +263,13 @@ fn ctrl_r_trashes_every_marked_entry() {
 
 #[test]
 fn in_the_archived_list_ctrl_a_restores_and_ctrl_r_trashes() {
-    let (sb, ctx, mut app) = setup();
-    for d in ["old1", "old2", "old3"] {
-        fs::create_dir_all(sb.archive_dir().join(d)).unwrap();
-    }
+    let sb = Sandbox::new();
+    sb.archive(&["old1", "old2", "old3"]);
+    let ctx = sb.ctx();
+    let mut app = App::new(&ctx).unwrap();
     app.on_key(&ctx, ctrl('t'));
     app.on_key(&ctx, ctrl('a'));
-    assert_eq!(
-        sb.names(&sb.root),
-        [".hidden", "alpha", "beta", "file.txt", "gamma", "old1"]
-    );
+    assert_eq!(sb.archived(), ["old2", "old3"]);
     assert_eq!(shown(&app), ["old2", "old3"]);
     assert!(
         app.status
@@ -271,15 +281,11 @@ fn in_the_archived_list_ctrl_a_restores_and_ctrl_r_trashes() {
 
     app.on_key(&ctx, ctrl('r'));
     assert_eq!(sb.names(&sb.trash_dir), ["0-old2"]);
-    assert_eq!(sb.names(&sb.archive_dir()), ["old3"]);
-    assert_eq!(
-        sb.names(&sb.root)
-            .iter()
-            .filter(|n| n.starts_with("old"))
-            .count(),
-        1,
-        "trashed, not restored"
-    );
+    assert_eq!(sb.archived(), ["old3"], "the trashed archive is forgotten");
+    assert_eq!(shown(&app), ["old3"]);
+
+    app.on_key(&ctx, ctrl('t'));
+    assert_eq!(shown(&app), ["alpha", "beta", "gamma", "old1"]);
 }
 
 #[test]
@@ -292,7 +298,7 @@ fn pasted_text_is_data_and_never_triggers_commands() {
         sb.names(&sb.root),
         [".hidden", "alpha", "beta", "file.txt", "gamma"]
     );
-    assert!(sb.names(&sb.trash_dir).is_empty() && !sb.archive_dir().exists());
+    assert!(sb.names(&sb.trash_dir).is_empty() && sb.archived().is_empty());
     let _ = ctx;
 }
 
@@ -565,14 +571,15 @@ fn ctrl_o_opens_the_current_entry_in_the_file_manager_and_changes_nothing() {
         sb.names(&sb.root),
         [".hidden", "alpha", "beta", "file.txt", "gamma"]
     );
-    assert!(sb.names(&sb.trash_dir).is_empty() && !sb.archive_dir().exists());
+    assert!(sb.names(&sb.trash_dir).is_empty() && sb.archived().is_empty());
 
-    fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
+    sb.archive(&["old"]);
+    let mut app = App::new(&ctx).unwrap();
     app.on_key(&ctx, ctrl('t'));
     app.on_key(&ctx, ctrl('o'));
     assert_eq!(
         sb.opened.lock().unwrap().last().unwrap(),
-        &sb.archive_dir().join("old")
+        &sb.root.join("old")
     );
 
     type_text(&mut app, &ctx, "zzz");
@@ -649,7 +656,7 @@ fn help_takes_the_keys_until_it_is_closed() {
     assert!(!click(&mut app, MouseButton::Right, list.x + 3, list.y + 1));
     assert!(app.query.is_empty() && app.marks.is_empty());
     assert_eq!(shown(&app), ["alpha", "beta", "gamma"]);
-    assert_eq!(sb.names(&sb.archive_dir()), Vec::<String>::new());
+    assert_eq!(sb.archived(), Vec::<String>::new());
 
     assert_eq!(app.on_key(&ctx, key(KeyCode::Esc)), Outcome::Continue);
     assert!(!app.help, "Esc closes the help instead of quitting");
@@ -849,8 +856,10 @@ fn find_on_screen(text: &str, needle: &str) -> Option<(usize, usize)> {
 fn the_title_keeps_its_layout_when_the_mode_changes() {
     const MARKS: [&str; 5] = ["flatdir", "Active", "Archived", "? Help", ">"];
     for width in [50, 60, 80, 100, 140] {
-        let (sb, ctx, mut app) = setup();
-        fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
+        let sb = Sandbox::new();
+        sb.archive(&["old"]);
+        let ctx = sb.ctx();
+        let mut app = App::new(&ctx).unwrap();
         let snapshot = |app: &mut App| {
             let text = screen(&render(app, width, 24));
             let marks: Vec<_> = MARKS.iter().map(|k| find_on_screen(&text, k)).collect();
@@ -947,7 +956,7 @@ fn right_click_marks_the_clicked_row_and_leaves_the_cursor_alone() {
 
     // Marks made with the mouse are what the keyboard actions use.
     app.on_key(&ctx, ctrl('a'));
-    assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
+    assert_eq!(sb.archived(), ["gamma"]);
 }
 
 #[test]
@@ -965,7 +974,7 @@ fn ctrl_q_clears_every_mark_and_nothing_else() {
 
     // Without marks the actions use the current row only, so a reset really does narrow them.
     app.on_key(&ctx, ctrl('a'));
-    assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
+    assert_eq!(sb.archived(), ["gamma"]);
     assert_eq!(shown(&app), ["alpha", "beta"]);
 }
 
@@ -1091,7 +1100,7 @@ fn list_actions_are_unreachable_from_the_new_view() {
         sb.names(&sb.root),
         [".hidden", "alpha", "beta", "file.txt", "gamma"]
     );
-    assert!(sb.names(&sb.trash_dir).is_empty() && !sb.archive_dir().exists());
+    assert!(sb.names(&sb.trash_dir).is_empty() && sb.archived().is_empty());
     assert!(sb.opened.lock().unwrap().is_empty());
     assert_eq!(app.kind, ListKind::Active);
 }

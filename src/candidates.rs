@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
 
+use crate::archive::State;
 use crate::context::Context;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,10 +36,31 @@ pub fn list_children(dir: &Path) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
-pub fn archived(ctx: &Context) -> Result<Vec<Entry>> {
-    let base = ctx.archive_base()?;
-    if !base.is_dir() {
-        return Ok(Vec::new());
-    }
-    list_children(&base)
+/// The root's children, split by the archive state.
+pub struct Lists {
+    pub active: Vec<Entry>,
+    pub archived: Vec<Entry>,
+    /// Archived paths of this root that are gone (deleted or renamed by hand). Only reported here,
+    /// so reading stays free of writes; the TUI forgets them.
+    pub missing: Vec<PathBuf>,
+}
+
+pub fn lists(ctx: &Context) -> Result<Lists> {
+    let root = ctx.root()?;
+    let children = list_children(root)?;
+    let state = State::load(&ctx.env.state_path)?;
+    let (archived, active) = children
+        .into_iter()
+        .partition::<Vec<_>, _>(|e| state.archived.contains_key(&e.path));
+    let missing = state
+        .archived
+        .keys()
+        .filter(|p| p.parent() == Some(root) && !archived.iter().any(|e| &e.path == *p))
+        .cloned()
+        .collect();
+    Ok(Lists {
+        active,
+        archived,
+        missing,
+    })
 }

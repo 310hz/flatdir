@@ -15,8 +15,8 @@ pub struct RootChange {
     pub changed: bool,
 }
 
-/// Sets the managed root, replacing any previous one. Archives of the old root stay where they are
-/// (under its own path) and show up again if it is set back.
+/// Sets the managed root, replacing any previous one. Archive records of the old root are kept and
+/// apply again if it is set back.
 pub fn set_root(ctx: &mut Context, path: &Path) -> Result<RootChange> {
     let abs =
         fs::canonicalize(path).with_context(|| format!("not a directory: {}", path.display()))?;
@@ -24,7 +24,8 @@ pub fn set_root(ctx: &mut Context, path: &Path) -> Result<RootChange> {
         bail!("not a directory: {}", path.display());
     }
 
-    // Even if HOME itself is reached through a symlink, store the path relative to env.home (which rel_from_home relies on).
+    // Even if HOME itself is reached through a symlink, store the path under env.home as spelled, so
+    // it keeps matching the archive state's keys and the `~/` shortening on screen.
     let home = fs::canonicalize(&ctx.env.home)?;
     let rel = match abs.strip_prefix(&home) {
         Ok(rel) if !rel.as_os_str().is_empty() => rel.to_path_buf(),

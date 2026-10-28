@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
@@ -24,10 +24,5 @@ impl Context {
             .root
             .as_deref()
             .ok_or_else(|| anyhow!("no managed root (run: flatdir root <path>)"))
-    }
-
-    /// Where archived directories live. There is a single managed root, so everything directly under this is an archive.
-    pub fn archive_base(&self) -> Result<PathBuf> {
-        self.env.archive_dest(self.root()?)
     }
 }

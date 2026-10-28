@@ -125,15 +125,14 @@ pub struct App {
     /// First visible row of the preview. Reset by the UI when the previewed entry or mode changes.
     pub preview_scroll: u16,
     active: Vec<Entry>,
-    /// Loaded on first use; most sessions never open the archive.
-    archived: Option<Vec<Entry>>,
+    archived: Vec<Entry>,
     scores: HashMap<PathBuf, f64>,
     matcher: Matcher,
 }
 
 impl App {
     pub fn new(ctx: &Context) -> anyhow::Result<Self> {
-        let active = candidates::list_children(ctx.root()?)?;
+        let lists = candidates::lists(ctx)?;
         let mut app = Self {
             kind: ListKind::Active,
             preview_mode: PreviewMode::Markdown,
@@ -149,11 +148,12 @@ impl App {
             home: ctx.env.home.clone(),
             job: None,
             preview_scroll: 0,
-            active,
-            archived: None,
+            active: lists.active,
+            archived: lists.archived,
             scores: HashMap::new(),
             matcher: Matcher::new(MatcherConfig::DEFAULT),
         };
+        app.forget(ctx, &lists.missing);
         app.refilter();
         Ok(app)
     }
@@ -161,7 +161,7 @@ impl App {
     pub fn list(&self) -> &[Entry] {
         match self.kind {
             ListKind::Active => &self.active,
-            ListKind::Archived => self.archived.as_deref().unwrap_or(&[]),
+            ListKind::Archived => &self.archived,
         }
     }
 
@@ -284,7 +284,7 @@ impl App {
                     None => Outcome::Continue,
                 };
             }
-            (KeyCode::Char('t'), true) => self.toggle_list(ctx),
+            (KeyCode::Char('t'), true) => self.toggle_list(),
             (KeyCode::Char('a'), true) => self.execute(ctx, Op::ToggleArchived),
             (KeyCode::Char('p'), true) => self.preview_mode = self.preview_mode.toggled(),
             (KeyCode::Char('r'), true) => self.execute(ctx, Op::Trash),
@@ -546,17 +546,11 @@ impl App {
         (index < self.view.len()).then_some(index)
     }
 
-    fn toggle_list(&mut self, ctx: &Context) {
+    fn toggle_list(&mut self) {
         let next = match self.kind {
             ListKind::Active => ListKind::Archived,
             ListKind::Archived => ListKind::Active,
         };
-        if next == ListKind::Archived && self.archived.is_none() {
-            match candidates::archived(ctx) {
-                Ok(list) => self.archived = Some(list),
-                Err(e) => return self.fail(e),
-            }
-        }
         self.kind = next;
         self.marks.clear();
         self.cursor = 0;
@@ -611,15 +605,15 @@ impl App {
         let names = |v: Vec<String>| v.join(", ");
         Ok(match (self.kind, op) {
             (ListKind::Active, Op::ToggleArchived) => {
-                let moved = ops::archive(ctx, targets)?;
-                let notes: Vec<String> = moved
+                let archived = ops::archive(ctx, targets)?;
+                let notes: Vec<String> = archived
                     .iter()
                     .filter(|m| !m.leftovers.is_empty())
                     .map(|m| format!("{} contains {}", m.name, m.leftovers.join(", ")))
                     .collect();
                 let mut msg = format!(
                     "archived: {}",
-                    names(moved.iter().map(|m| m.name.clone()).collect())
+                    names(archived.iter().map(|m| m.name.clone()).collect())
                 );
                 if !notes.is_empty() {
                     msg.push_str(&format!(" ({})", notes.join("; ")));
@@ -627,40 +621,29 @@ impl App {
                 msg
             }
             (ListKind::Archived, Op::ToggleArchived) => {
-                let moved = ops::restore(ctx, targets)?;
-                format!(
-                    "restored: {}",
-                    names(moved.into_iter().map(|m| m.name).collect())
-                )
+                format!("restored: {}", names(ops::restore(ctx, targets)?))
             }
-            (ListKind::Active, Op::Trash) => {
-                let root = ctx.root()?.to_path_buf();
-                format!(
-                    "moved to trash: {}",
-                    names(ops::remove(ctx, targets, &root)?)
-                )
-            }
-            (ListKind::Archived, Op::Trash) => {
-                let base = ctx.archive_base()?;
-                format!(
-                    "moved to trash: {}",
-                    names(ops::remove(ctx, targets, &base)?)
-                )
-            }
+            (_, Op::Trash) => format!("moved to trash: {}", names(ops::remove(ctx, targets)?)),
         })
     }
 
-    /// Re-reads the lists after a change on disk. The archive is reloaded lazily unless it is on screen.
+    /// Re-reads the lists after a change on disk.
     fn reload(&mut self, ctx: &Context) {
-        if let Ok(mut list) = ctx.root().and_then(candidates::list_children) {
-            sort_by_score(&mut list, &self.scores);
-            self.active = list;
-        }
-        self.archived = None;
-        if self.kind == ListKind::Archived {
-            self.archived = candidates::archived(ctx).ok();
+        if let Ok(mut lists) = candidates::lists(ctx) {
+            sort_by_score(&mut lists.active, &self.scores);
+            self.active = lists.active;
+            self.archived = lists.archived;
+            self.forget(ctx, &lists.missing);
         }
         self.refilter();
+    }
+
+    /// Archives deleted or renamed by hand are dropped from the state, so a later directory with
+    /// the same name does not start out hidden.
+    fn forget(&mut self, ctx: &Context, missing: &[PathBuf]) {
+        if let Err(e) = ops::forget(ctx, missing) {
+            self.fail(e);
+        }
     }
 
     fn info(&mut self, text: impl Into<String>) {
@@ -680,7 +663,7 @@ impl App {
     fn refilter(&mut self) {
         let list = match self.kind {
             ListKind::Active => &self.active[..],
-            ListKind::Archived => self.archived.as_deref().unwrap_or(&[]),
+            ListKind::Archived => &self.archived[..],
         };
         if self.query.is_empty() {
             self.view = (0..list.len())

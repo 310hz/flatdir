@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use flatdir::archive::{Record, State};
 use flatdir::candidates;
 use flatdir::config::Config;
 use flatdir::context::Context;
@@ -108,7 +109,7 @@ pub struct Sandbox {
     _tmp: TempDir,
     pub home: PathBuf,
     pub root: PathBuf,
-    pub archive_root: PathBuf,
+    pub state_path: PathBuf,
     pub trash_dir: PathBuf,
     pub config_path: PathBuf,
     pub opened: Arc<Mutex<Vec<PathBuf>>>,
@@ -129,7 +130,7 @@ impl Sandbox {
         let trash_dir = base.join("trash");
         fs::create_dir_all(&trash_dir).unwrap();
         Self {
-            archive_root: base.join("data/archive"),
+            state_path: base.join("state/state.json"),
             config_path: base.join("cfg/config.toml"),
             _tmp: tmp,
             home,
@@ -145,7 +146,7 @@ impl Sandbox {
             env: Env {
                 home: self.home.clone(),
                 config_path: self.config_path.clone(),
-                archive_root: self.archive_root.clone(),
+                state_path: self.state_path.clone(),
             },
             config: Config {
                 root: Some(self.root.clone()),
@@ -173,8 +174,30 @@ impl Sandbox {
         v
     }
 
-    pub fn archive_dir(&self) -> PathBuf {
-        self.archive_root.join("ws")
+    /// Creates the directories in the root and records them as archived, the way Ctrl+A leaves them.
+    pub fn archive(&self, names: &[&str]) {
+        let mut state = State::load(&self.state_path).unwrap();
+        for n in names {
+            let path = self.root.join(n);
+            fs::create_dir_all(&path).unwrap();
+            state.archived.insert(path, Record { archived_at: 1 });
+        }
+        state.save(&self.state_path).unwrap();
+    }
+
+    /// Recorded archives as paths relative to the root (or absolute, for another root), sorted.
+    pub fn archived(&self) -> Vec<String> {
+        State::load(&self.state_path)
+            .unwrap()
+            .archived
+            .keys()
+            .map(|p| {
+                p.strip_prefix(&self.root)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect()
     }
 
     pub fn entries(&self, names: &[&str]) -> Vec<candidates::Entry> {
@@ -183,16 +206,6 @@ impl Sandbox {
             .map(|n| candidates::Entry {
                 name: n.to_string(),
                 path: self.root.join(n),
-            })
-            .collect()
-    }
-
-    pub fn archived_entries(&self, names: &[&str]) -> Vec<candidates::Entry> {
-        names
-            .iter()
-            .map(|n| candidates::Entry {
-                name: n.to_string(),
-                path: self.archive_dir().join(n),
             })
             .collect()
     }

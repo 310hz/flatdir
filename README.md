@@ -32,11 +32,11 @@ flatdir root --cd  # cd into the managed root
 flatdir status     # show the root, counts and optional commands
 ```
 
-Archived directories are kept in `~/.local/share/flatdir/archive/`, under the same path as the root has inside `$HOME`.
+Archiving only hides a directory from the TUI: it stays in the root, so `ls` and Finder still show it. Which ones are archived is recorded in `~/.local/state/flatdir/state.json`.
 
 ## Safety
 
-flatdir moves real directories, so it:
+flatdir creates and trashes real directories, so it:
 
 - runs only on an interactive terminal, never in pipes or scripts,
 - refuses to act on every entry of a list at once,

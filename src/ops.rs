@@ -1,97 +1,74 @@
 //! Operations on already-chosen directories. Selection and confirmation live elsewhere (the TUI),
 //! so every caller goes through the same validation: all targets are checked before any is touched.
 
-use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 
+use crate::archive::{Record, State};
 use crate::candidates::Entry;
 use crate::context::Context;
-use crate::fsops::move_dir;
 use crate::guard::{ensure_child_of, ensure_plain_dir};
-use crate::paths::LEGACY_ARCHIVE_MARKER;
 
 /// Regenerable items worth mentioning after archiving. They are reported, never deleted automatically.
 const LEFTOVER_CANDIDATES: &[&str] =
     &[".venv", "node_modules", "__pycache__", ".ipynb_checkpoints"];
 
-pub struct Moved {
+pub struct Archived {
     pub name: String,
-    pub dest: PathBuf,
-    /// Names from `LEFTOVER_CANDIDATES` found inside (archive only).
+    /// Names from `LEFTOVER_CANDIDATES` found inside.
     pub leftovers: Vec<&'static str>,
 }
 
-pub fn archive(ctx: &Context, targets: &[Entry]) -> Result<Vec<Moved>> {
-    let root = ctx.root()?.to_path_buf();
-    let base = ctx.archive_base()?;
-
-    let mut plan = Vec::new();
+/// Checks every target before anything changes, and returns the state as it is on disk now.
+fn validate(ctx: &Context, targets: &[Entry], archived: bool) -> Result<State> {
+    let root = ctx.root()?;
+    let state = State::load(&ctx.env.state_path)?;
     for t in targets {
-        ensure_child_of(&root, &t.path)?;
+        ensure_child_of(root, &t.path)?;
         ensure_plain_dir(&t.path)?;
-        let dest = base.join(&t.name);
-        if dest.exists() {
-            bail!("archive destination exists: {}", dest.display());
-        }
-        plan.push((t, dest));
-    }
-
-    fs::create_dir_all(&base)?;
-    let mut done = Vec::new();
-    for (t, dest) in plan {
-        move_dir(&t.path, &dest)?;
-        let leftovers = LEFTOVER_CANDIDATES
-            .iter()
-            .copied()
-            .filter(|n| dest.join(n).symlink_metadata().is_ok())
-            .collect();
-        done.push(Moved {
-            name: t.name.clone(),
-            dest,
-            leftovers,
-        });
-    }
-    Ok(done)
-}
-
-pub fn restore(ctx: &Context, targets: &[Entry]) -> Result<Vec<Moved>> {
-    let root = ctx.root()?.to_path_buf();
-    let base = ctx.archive_base()?;
-
-    let mut plan = Vec::new();
-    for t in targets {
-        ensure_child_of(&base, &t.path)?;
-        ensure_plain_dir(&t.path)?;
-        let dest = root.join(&t.name);
-        if dest.exists() {
-            bail!("restore destination exists: {}", dest.display());
-        }
-        plan.push((t, dest));
-    }
-
-    let mut done = Vec::new();
-    for (t, dest) in plan {
-        move_dir(&t.path, &dest)?;
-        // The old implementation left a marker file; it is obsolete, so remove it while restoring.
-        match fs::remove_file(dest.join(LEGACY_ARCHIVE_MARKER)) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+        match (archived, state.archived.contains_key(&t.path)) {
+            (true, false) => bail!("not archived: {}", t.path.display()),
+            (false, true) => bail!("already archived: {}", t.path.display()),
             _ => {}
         }
-        done.push(Moved {
-            name: t.name.clone(),
-            dest,
-            leftovers: Vec::new(),
-        });
     }
-    Ok(done)
+    Ok(state)
 }
 
-/// `parent` is the list the targets came from (the root, or the archive base).
-pub fn remove(ctx: &Context, targets: &[Entry], parent: &std::path::Path) -> Result<Vec<String>> {
+pub fn archive(ctx: &Context, targets: &[Entry]) -> Result<Vec<Archived>> {
+    let mut state = validate(ctx, targets, false)?;
     for t in targets {
-        ensure_child_of(parent, &t.path)?;
+        state.archived.insert(t.path.clone(), Record::now());
+    }
+    state.save(&ctx.env.state_path)?;
+    Ok(targets
+        .iter()
+        .map(|t| Archived {
+            name: t.name.clone(),
+            leftovers: LEFTOVER_CANDIDATES
+                .iter()
+                .copied()
+                .filter(|n| t.path.join(n).symlink_metadata().is_ok())
+                .collect(),
+        })
+        .collect())
+}
+
+pub fn restore(ctx: &Context, targets: &[Entry]) -> Result<Vec<String>> {
+    let mut state = validate(ctx, targets, true)?;
+    for t in targets {
+        state.archived.remove(&t.path);
+    }
+    state.save(&ctx.env.state_path)?;
+    Ok(targets.iter().map(|t| t.name.clone()).collect())
+}
+
+/// Works on both lists; trashed archives are dropped from the state as well.
+pub fn remove(ctx: &Context, targets: &[Entry]) -> Result<Vec<String>> {
+    let root = ctx.root()?;
+    for t in targets {
+        ensure_child_of(root, &t.path)?;
         ensure_plain_dir(&t.path)?;
     }
     let mut done = Vec::new();
@@ -99,5 +76,22 @@ pub fn remove(ctx: &Context, targets: &[Entry], parent: &std::path::Path) -> Res
         ctx.trasher.trash(&t.path)?;
         done.push(t.name.clone());
     }
+    forget(
+        ctx,
+        &targets.iter().map(|t| t.path.clone()).collect::<Vec<_>>(),
+    )?;
     Ok(done)
+}
+
+/// Drops archived paths that no longer exist. Writes nothing when none of them is recorded.
+pub fn forget(ctx: &Context, paths: &[PathBuf]) -> Result<()> {
+    let mut state = State::load(&ctx.env.state_path)?;
+    let before = state.archived.len();
+    for p in paths {
+        state.archived.remove(p);
+    }
+    if state.archived.len() == before {
+        return Ok(());
+    }
+    state.save(&ctx.env.state_path)
 }

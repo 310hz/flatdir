@@ -1,16 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use anyhow::{Context as _, Result, bail};
-
-/// Marker file the old shell implementation left in archived directories. No longer written, but cleaned up on restore.
-pub const LEGACY_ARCHIVE_MARKER: &str = ".flatdir_archived";
+use anyhow::{Context as _, Result};
 
 /// Gathers every real-environment path in one place so tests can inject throwaway paths and never touch the real HOME.
 #[derive(Debug, Clone)]
 pub struct Env {
     pub home: PathBuf,
     pub config_path: PathBuf,
-    pub archive_root: PathBuf,
+    /// Which directories are archived (`archive::State`).
+    pub state_path: PathBuf,
 }
 
 impl Env {
@@ -23,30 +21,11 @@ impl Env {
                 .unwrap_or_else(|| home.join(default))
         };
         let config_home = xdg("XDG_CONFIG_HOME", ".config");
-        let data_home = xdg("XDG_DATA_HOME", ".local/share");
+        let state_home = xdg("XDG_STATE_HOME", ".local/state");
         Ok(Self {
             config_path: config_home.join("flatdir").join("config.toml"),
-            archive_root: data_home.join("flatdir").join("archive"),
+            state_path: state_home.join("flatdir").join("state.json"),
             home,
         })
-    }
-
-    pub fn rel_from_home(&self, abs: &Path) -> Result<PathBuf> {
-        match abs.strip_prefix(&self.home) {
-            Ok(rel) if !rel.as_os_str().is_empty() => Ok(rel.to_path_buf()),
-            _ => bail!("path is not under HOME: {}", abs.display()),
-        }
-    }
-
-    pub fn abs_from_home_rel(&self, rel: &Path) -> Result<PathBuf> {
-        if rel.as_os_str().is_empty() || rel.is_absolute() {
-            bail!("invalid relpath: {}", rel.display());
-        }
-        Ok(self.home.join(rel))
-    }
-
-    /// The archive keeps the HOME-relative path as is (`~/a/b` -> `<archive_root>/a/b`).
-    pub fn archive_dest(&self, target: &Path) -> Result<PathBuf> {
-        Ok(self.archive_root.join(self.rel_from_home(target)?))
     }
 }

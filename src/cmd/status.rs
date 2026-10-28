@@ -14,13 +14,14 @@ pub struct Tool {
 pub struct RootStatus {
     pub path: PathBuf,
     /// `None` when the root cannot be read (missing or not a directory).
+    /// Every directory listed under the root, archived ones included.
     pub directories: Option<usize>,
-    pub archive_dir: PathBuf,
     pub archived: usize,
 }
 
 pub struct Status {
     pub config_path: PathBuf,
+    pub state_path: PathBuf,
     pub root: Option<RootStatus>,
     pub tools: Vec<Tool>,
 }
@@ -36,14 +37,17 @@ const TOOLS: &[(&str, &str)] = &[
 
 /// Read-only; never fails, so a broken setup is still reported.
 pub fn status(ctx: &Context) -> Status {
-    let root = ctx.config.root.as_ref().map(|path| RootStatus {
-        path: path.clone(),
-        directories: candidates::list_children(path).ok().map(|v| v.len()),
-        archive_dir: ctx.archive_base().unwrap_or_default(),
-        archived: candidates::archived(ctx).map(|v| v.len()).unwrap_or(0),
+    let root = ctx.config.root.as_ref().map(|path| {
+        let lists = candidates::lists(ctx).ok();
+        RootStatus {
+            path: path.clone(),
+            directories: lists.as_ref().map(|l| l.active.len() + l.archived.len()),
+            archived: lists.map_or(0, |l| l.archived.len()),
+        }
     });
     Status {
         config_path: ctx.env.config_path.clone(),
+        state_path: ctx.env.state_path.clone(),
         root,
         tools: TOOLS
             .iter()
@@ -66,11 +70,11 @@ impl fmt::Display for Status {
                     Some(n) => writeln!(f, "directories: {n}")?,
                     None => writeln!(f, "directories: (root is not a readable directory)")?,
                 }
-                writeln!(f, "archive:     {}", r.archive_dir.display())?;
                 writeln!(f, "archived:    {}", r.archived)?;
             }
         }
         writeln!(f, "config:      {}", self.config_path.display())?;
+        writeln!(f, "state:       {}", self.state_path.display())?;
 
         writeln!(f, "\noptional commands:")?;
         for t in &self.tools {

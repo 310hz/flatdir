@@ -6,6 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use common::Sandbox;
+use flatdir::archive::{Record, State};
 use flatdir::candidates;
 use flatdir::cmd;
 use flatdir::config::Config;
@@ -27,66 +28,76 @@ fn children_skip_hidden_dirs_and_files() {
 }
 
 #[test]
-fn archive_moves_only_targets_without_writing_a_marker() {
+fn archive_only_records_targets_and_leaves_them_in_place() {
     let sb = Sandbox::new();
     fs::write(sb.root.join("alpha/keep.txt"), "x").unwrap();
     fs::create_dir_all(sb.root.join("alpha/node_modules")).unwrap();
 
-    let moved = ops::archive(&sb.ctx(), &sb.entries(&["alpha"])).unwrap();
+    let archived = ops::archive(&sb.ctx(), &sb.entries(&["alpha"])).unwrap();
 
-    assert_eq!(sb.names(&sb.root), [".hidden", "beta", "file.txt", "gamma"]);
-    assert_eq!(sb.names(&sb.archive_dir()), ["alpha"]);
+    assert_eq!(sb.names(&sb.root), ROOT_ALL, "nothing moves");
     assert_eq!(
-        sb.names(&sb.archive_dir().join("alpha")),
+        sb.names(&sb.root.join("alpha")),
         ["keep.txt", "node_modules"]
     );
+    assert_eq!(sb.archived(), ["alpha"]);
     assert_eq!(
-        moved[0].leftovers,
+        archived[0].leftovers,
         ["node_modules"],
         "reported, but never deleted"
     );
 }
 
 #[test]
-fn restore_returns_dir_and_removes_legacy_marker() {
+fn restore_only_drops_the_record() {
     let sb = Sandbox::new();
-    let legacy = sb.archive_dir().join("old");
-    fs::create_dir_all(&legacy).unwrap();
-    fs::write(legacy.join(".flatdir_archived"), "").unwrap();
-    fs::write(legacy.join("data.txt"), "x").unwrap();
+    sb.archive(&["alpha", "beta"]);
 
-    ops::restore(&sb.ctx(), &sb.archived_entries(&["old"])).unwrap();
+    assert_eq!(
+        ops::restore(&sb.ctx(), &sb.entries(&["alpha"])).unwrap(),
+        ["alpha"]
+    );
 
-    assert_eq!(sb.names(&sb.root.join("old")), ["data.txt"]);
-    assert!(sb.names(&sb.archive_dir()).is_empty());
+    assert_eq!(sb.archived(), ["beta"]);
+    assert_eq!(sb.names(&sb.root), ROOT_ALL);
 }
 
 #[test]
-fn legacy_archives_are_listed_without_relying_on_markers() {
+fn lists_split_the_root_by_the_state_and_report_vanished_archives() {
     let sb = Sandbox::new();
-    fs::create_dir_all(sb.archive_dir().join("with-marker")).unwrap();
-    fs::write(sb.archive_dir().join("with-marker/.flatdir_archived"), "").unwrap();
-    fs::create_dir_all(sb.archive_dir().join("without-marker")).unwrap();
-    fs::create_dir_all(sb.archive_dir().join(".hidden-archive")).unwrap();
+    sb.archive(&["beta", "gone"]);
+    fs::remove_dir(sb.root.join("gone")).unwrap();
+    let elsewhere = sb.home.join("other/beta");
+    let mut state = State::load(&sb.state_path).unwrap();
+    state
+        .archived
+        .insert(elsewhere.clone(), Record { archived_at: 1 });
+    state.save(&sb.state_path).unwrap();
 
-    let names: Vec<String> = candidates::archived(&sb.ctx())
-        .unwrap()
-        .into_iter()
-        .map(|e| e.name)
-        .collect();
-    assert_eq!(names, ["with-marker", "without-marker"]);
+    let lists = candidates::lists(&sb.ctx()).unwrap();
+    let names = |v: &[candidates::Entry]| v.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&lists.active), ["alpha", "gamma"]);
+    assert_eq!(names(&lists.archived), ["beta"]);
+    assert_eq!(
+        lists.missing,
+        [sb.root.join("gone")],
+        "another root's record is not this root's business"
+    );
+    assert_eq!(sb.archived().len(), 3, "listing never writes");
 }
 
 #[test]
 fn remove_trashes_only_targets() {
     let sb = Sandbox::new();
-    let done = ops::remove(&sb.ctx(), &sb.entries(&["beta"]), &sb.root).unwrap();
+    sb.archive(&["beta", "gamma"]);
+    let done = ops::remove(&sb.ctx(), &sb.entries(&["beta"])).unwrap();
     assert_eq!(done, ["beta"]);
     assert_eq!(
         sb.names(&sb.root),
         [".hidden", "alpha", "file.txt", "gamma"]
     );
     assert_eq!(sb.names(&sb.trash_dir), ["0-beta"]);
+    assert_eq!(sb.archived(), ["gamma"], "a trashed archive is forgotten");
 }
 
 #[test]
@@ -111,30 +122,30 @@ fn operations_refuse_targets_outside_their_parent_and_change_nothing() {
     for bad in [&outside, &nested, &hidden] {
         let targets = [sb.entries(&["alpha"]).remove(0), bad.clone()];
         assert!(ops::archive(&ctx, &targets).is_err());
-        assert!(ops::remove(&ctx, &targets, &sb.root).is_err());
+        assert!(ops::remove(&ctx, &targets).is_err());
     }
     assert_eq!(sb.names(&sb.root), ROOT_ALL);
     assert!(sb.names(&sb.trash_dir).is_empty());
-    assert!(!sb.archive_dir().exists());
+    assert!(!sb.state_path.exists());
 }
 
 #[test]
-fn archive_and_restore_refuse_existing_destinations_and_move_nothing() {
+fn archive_and_restore_refuse_targets_in_the_wrong_state_and_change_nothing() {
     let sb = Sandbox::new();
-    fs::create_dir_all(sb.archive_dir().join("beta")).unwrap();
+    sb.archive(&["beta"]);
     let err = ops::archive(&sb.ctx(), &sb.entries(&["alpha", "beta"]))
         .err()
         .unwrap()
         .to_string();
-    assert!(err.contains("destination exists"), "{err}");
-    assert_eq!(sb.names(&sb.root), ROOT_ALL);
+    assert!(err.contains("already archived"), "{err}");
+    assert_eq!(sb.archived(), ["beta"]);
 
-    fs::create_dir_all(sb.archive_dir().join("alpha")).unwrap();
-    let err = ops::restore(&sb.ctx(), &sb.archived_entries(&["alpha"]))
+    let err = ops::restore(&sb.ctx(), &sb.entries(&["beta", "alpha"]))
         .err()
         .unwrap()
         .to_string();
-    assert!(err.contains("destination exists"), "{err}");
+    assert!(err.contains("not archived"), "{err}");
+    assert_eq!(sb.archived(), ["beta"]);
 }
 
 #[test]
@@ -148,7 +159,7 @@ fn symlinks_are_not_followed_as_targets() {
         name: "link".into(),
         path: sb.root.join("link"),
     };
-    assert!(ops::remove(&sb.ctx(), std::slice::from_ref(&entry), &sb.root).is_err());
+    assert!(ops::remove(&sb.ctx(), std::slice::from_ref(&entry)).is_err());
     assert!(ops::archive(&sb.ctx(), &[entry]).is_err());
     assert!(outside.is_dir());
     let listed: Vec<String> = candidates::list_children(&sb.root)
@@ -201,18 +212,21 @@ fn the_root_can_be_set_replaced_and_unset() {
 fn archives_of_a_previous_root_come_back_when_it_is_set_again() {
     let sb = Sandbox::new();
     let other = sb.home.join("other");
-    fs::create_dir_all(&other).unwrap();
-    fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
+    fs::create_dir_all(other.join("old")).unwrap();
+    sb.archive(&["old"]);
 
     let mut ctx = sb.ctx();
     cmd::set_root(&mut ctx, &other).unwrap();
+    let lists = candidates::lists(&ctx).unwrap();
     assert!(
-        candidates::archived(&ctx).unwrap().is_empty(),
-        "the other root has no archive"
+        lists.archived.is_empty() && lists.missing.is_empty(),
+        "the same name under the other root is not archived"
     );
+    assert_eq!(lists.active[0].name, "old");
     cmd::set_root(&mut ctx, &sb.root).unwrap();
-    let names: Vec<String> = candidates::archived(&ctx)
+    let names: Vec<String> = candidates::lists(&ctx)
         .unwrap()
+        .archived
         .into_iter()
         .map(|e| e.name)
         .collect();
@@ -245,7 +259,7 @@ fn new_names_must_be_plain_and_free() {
     assert!(create::plan(&ctx, Recipe::Directory, "alpha", false).is_err());
     assert!(create::plan(&ctx, Recipe::GitHubRepo, "alpha", false).is_err());
 
-    fs::create_dir_all(sb.archive_dir().join("archived-name")).unwrap();
+    sb.archive(&["archived-name"]);
     assert!(create::plan(&ctx, Recipe::Directory, "archived-name", false).is_err());
 
     assert_eq!(
@@ -355,20 +369,18 @@ fn zoxide_output_with_spaces_in_paths_is_parsed() {
 #[test]
 fn status_reports_counts_and_survives_a_missing_root() {
     let sb = Sandbox::new();
-    for d in ["a1", "a2"] {
-        fs::create_dir_all(sb.archive_dir().join(d)).unwrap();
-    }
+    sb.archive(&["a1", "a2"]);
     let status = cmd::status(&sb.ctx());
     let root = status.root.as_ref().unwrap();
     assert_eq!(
         (root.path.as_path(), root.directories, root.archived),
-        (sb.root.as_path(), Some(3), 2)
+        (sb.root.as_path(), Some(5), 2)
     );
-    assert_eq!(root.archive_dir, sb.archive_dir());
+    assert_eq!(status.state_path, sb.state_path);
     assert!(status.tools.iter().any(|t| t.name == "zoxide"));
     let text = status.to_string();
     assert!(
-        text.contains("directories: 3") && text.contains("archived:    2"),
+        text.contains("directories: 5") && text.contains("archived:    2"),
         "{text}"
     );
 

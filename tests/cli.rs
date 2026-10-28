@@ -9,6 +9,7 @@ use std::process::{Command, Output};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use flatdir::archive::{Record, State};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use tempfile::TempDir;
 
@@ -112,8 +113,26 @@ impl Sandbox {
         v
     }
 
-    fn archive_dir(&self) -> PathBuf {
-        self.home.join(".local/share/flatdir/archive/ws")
+    fn state_path(&self) -> PathBuf {
+        self.home.join(".local/state/flatdir/state.json")
+    }
+
+    /// Names recorded as archived, sorted.
+    fn archived(&self) -> Vec<String> {
+        State::load(&self.state_path())
+            .unwrap()
+            .archived
+            .keys()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn archive(&self, name: &str) {
+        let path = self.root.join(name);
+        fs::create_dir_all(&path).unwrap();
+        let mut state = State::load(&self.state_path()).unwrap();
+        state.archived.insert(path, Record { archived_at: 1 });
+        state.save(&self.state_path()).unwrap();
     }
 
     /// Drives the binary in a pty: waits for `wait_for` to appear, sends `keys`, returns all output.
@@ -265,13 +284,15 @@ fn ctrl_a_archives_and_ctrl_t_then_ctrl_a_restores() {
     fs::write(sb.root.join("alpha/keep.txt"), "x").unwrap();
 
     sb.run_in_pty(&[], &[], "alpha", "\x01|\x03");
-    assert_eq!(sb.names(&sb.root), ["beta"]);
-    assert!(sb.archive_dir().join("alpha/keep.txt").is_file());
+    assert_eq!(sb.archived(), ["alpha"]);
+    assert!(
+        sb.root.join("alpha/keep.txt").is_file(),
+        "it stays in place"
+    );
 
     sb.run_in_pty(&[], &[], "beta", "\x14|\x01|\x03");
+    assert!(sb.archived().is_empty());
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
-    assert!(sb.root.join("alpha/keep.txt").is_file());
-    assert!(sb.names(&sb.archive_dir()).is_empty());
 }
 
 #[test]
@@ -280,8 +301,7 @@ fn tab_marks_several_rows_for_one_action() {
     fs::create_dir_all(sb.root.join("gamma")).unwrap();
     sb.track();
     sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x01|\x03");
-    assert_eq!(sb.names(&sb.root), ["gamma"]);
-    assert_eq!(sb.names(&sb.archive_dir()), ["alpha", "beta"]);
+    assert_eq!(sb.archived(), ["alpha", "beta"]);
 }
 
 #[test]
@@ -290,7 +310,7 @@ fn typed_text_filters_and_a_paste_cannot_trigger_shortcuts() {
     sb.track();
     let text = sb.run_in_pty(&[], &[], "alpha", "\x1b[200~\x01\x01\x1b[201~|\x03");
     assert_eq!(sb.names(&sb.root), ["alpha", "beta"], "{text}");
-    assert!(sb.names(&sb.archive_dir()).is_empty());
+    assert!(sb.archived().is_empty());
 }
 
 /// Neither the old FZF_DEFAULT_OPTS nor skim's own variable can change how the program behaves.
@@ -313,7 +333,7 @@ fn environment_filter_options_change_nothing() {
 fn incident_regression_without_a_terminal_nothing_runs_and_nothing_changes() {
     let sb = Sandbox::new();
     sb.track();
-    fs::create_dir_all(sb.archive_dir().join("old")).unwrap();
+    sb.archive("old");
 
     for args in [&[][..], &["remove"], &["archive"], &["restore"], &["-a"]] {
         let out = Command::new(env!("CARGO_BIN_EXE_flatdir"))
@@ -329,8 +349,8 @@ fn incident_regression_without_a_terminal_nothing_runs_and_nothing_changes() {
     }
     let out = sb.run(&[]);
     assert!(String::from_utf8_lossy(&out.stderr).contains("interactive terminal"));
-    assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
-    assert_eq!(sb.names(&sb.archive_dir()), ["old"]);
+    assert_eq!(sb.names(&sb.root), ["alpha", "beta", "old"]);
+    assert_eq!(sb.archived(), ["old"]);
 }
 
 /// The screen must stay on the terminal's own palette (0-15), so it works on light and dark backgrounds.
@@ -452,8 +472,7 @@ fn clicking_a_row_moves_the_cursor_and_right_clicking_marks_it() {
         "alpha",
         &format!("\x1b[<2;5;{row}M\x1b[<2;5;{row}m|\x01|\x03"),
     );
-    assert_eq!(sb.names(&sb.root), ["alpha", "gamma"]);
-    assert_eq!(sb.names(&sb.archive_dir()), ["beta"]);
+    assert_eq!(sb.archived(), ["beta"]);
 }
 
 #[test]
@@ -463,8 +482,7 @@ fn ctrl_q_resets_the_marks_before_an_action() {
     sb.track();
     // Mark alpha and beta (the cursor ends on gamma), reset with Ctrl+Q, then archive: only gamma moves.
     sb.run_in_pty(&[], &[], "alpha", "\t|\t|\x11|\x01|\x03");
-    assert_eq!(sb.names(&sb.root), ["alpha", "beta"]);
-    assert_eq!(sb.names(&sb.archive_dir()), ["gamma"]);
+    assert_eq!(sb.archived(), ["gamma"]);
 }
 
 #[test]

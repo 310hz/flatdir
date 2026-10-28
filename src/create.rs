@@ -223,14 +223,6 @@ fn free_dest(ctx: &Context, name: &str) -> Result<PathBuf> {
     if dest.symlink_metadata().is_ok() {
         bail!("already exists: {}", dest.display());
     }
-    // Taking an archived name would make that archive impossible to restore.
-    let archived = ctx.archive_base()?.join(name);
-    if archived.exists() {
-        bail!(
-            "an archived directory has this name: {}",
-            archived.display()
-        );
-    }
     Ok(dest)
 }
 
