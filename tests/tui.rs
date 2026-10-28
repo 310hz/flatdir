@@ -11,7 +11,7 @@ use flatdir::context::Context;
 use flatdir::create::{Hub, Recipe};
 use flatdir::tui::preview::{self, PreviewMode, Shown};
 use flatdir::tui::ui::{self, PreviewCache};
-use flatdir::tui::{App, ListKind, Outcome};
+use flatdir::tui::{App, Confirmable, ListKind, Outcome};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{
@@ -228,6 +228,8 @@ fn ctrl_r_moves_the_current_entry_to_the_trash_and_refreshes_the_list() {
     let (sb, ctx, mut app) = setup();
     app.on_key(&ctx, key(KeyCode::Down));
     app.on_key(&ctx, ctrl('r'));
+    assert!(sb.names(&sb.trash_dir).is_empty(), "asks first");
+    app.on_key(&ctx, key(KeyCode::Enter));
 
     assert_eq!(sb.names(&sb.trash_dir), ["0-beta"]);
     assert_eq!(shown(&app), ["alpha", "gamma"]);
@@ -256,6 +258,7 @@ fn ctrl_r_trashes_every_marked_entry() {
     app.on_key(&ctx, key(KeyCode::Tab));
     app.on_key(&ctx, key(KeyCode::Tab));
     app.on_key(&ctx, ctrl('r'));
+    app.on_key(&ctx, key(KeyCode::Enter));
     assert_eq!(sb.names(&sb.trash_dir), ["0-alpha", "1-beta"]);
     assert_eq!(shown(&app), ["gamma"]);
     assert!(app.marks.is_empty());
@@ -280,6 +283,7 @@ fn in_the_archived_list_ctrl_a_restores_and_ctrl_r_trashes() {
     );
 
     app.on_key(&ctx, ctrl('r'));
+    app.on_key(&ctx, key(KeyCode::Enter));
     assert_eq!(sb.names(&sb.trash_dir), ["0-old2"]);
     assert_eq!(sb.archived(), ["old3"], "the trashed archive is forgotten");
     assert_eq!(shown(&app), ["old3"]);
@@ -618,6 +622,7 @@ fn help_opens_on_top_and_shows_every_item_whole() {
         "Ctrl+T            Toggle List: Active/Archived",
         "Ctrl+A            Archive",
         "Ctrl+R            Move to Trash",
+        "Ctrl+Z            Undo Archive/Restore",
         "Ctrl+O            Open in",
         "Ctrl+P            Toggle Preview: README/Tree",
         "Ctrl+N            New Directory or Clone",
@@ -654,7 +659,7 @@ fn help_takes_the_keys_until_it_is_closed() {
     render(&mut app, 100, 20);
     let list = app.panes.list;
     assert!(!click(&mut app, MouseButton::Right, list.x + 3, list.y + 1));
-    assert!(app.query.is_empty() && app.marks.is_empty());
+    assert!(app.query.is_empty() && app.marks.is_empty() && app.confirm.is_none());
     assert_eq!(shown(&app), ["alpha", "beta", "gamma"]);
     assert_eq!(sb.archived(), Vec::<String>::new());
 
@@ -1286,4 +1291,141 @@ fn the_title_marks_the_new_view_without_moving() {
             "{mark}"
         );
     }
+}
+
+#[test]
+fn the_trash_dialog_takes_every_key_and_esc_cancels_it() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, key(KeyCode::Tab));
+    app.on_key(&ctx, ctrl('r'));
+    let confirm = app.confirm.as_ref().unwrap();
+    assert_eq!(confirm.action, Confirmable::Trash);
+    assert_eq!(confirm.targets, sb.entries(&["alpha"]));
+
+    for k in [
+        ctrl('a'),
+        ctrl('r'),
+        ctrl('t'),
+        ctrl('z'),
+        key(KeyCode::Char('x')),
+    ] {
+        app.on_key(&ctx, k);
+    }
+    app.on_paste(&ctx, "beta");
+    render(&mut app, 100, 20);
+    let list = app.panes.list;
+    assert!(!click(&mut app, MouseButton::Right, list.x + 3, list.y + 2));
+    assert!(app.confirm.is_some() && app.query.is_empty());
+    assert_eq!(app.kind, ListKind::Active);
+
+    app.on_key(&ctx, key(KeyCode::Esc));
+    assert!(app.confirm.is_none());
+    assert_eq!(app.status.as_ref().unwrap().text, "cancelled");
+    assert!(sb.names(&sb.trash_dir).is_empty() && sb.archived().is_empty());
+    assert!(
+        app.marks.contains(&sb.root.join("alpha")),
+        "cancelling keeps the marks"
+    );
+}
+
+#[test]
+fn the_dialog_names_what_it_will_do_and_cuts_long_lists() {
+    let sb = Sandbox::new();
+    for i in 0..30 {
+        fs::create_dir(sb.root.join(format!("dir{i:02}"))).unwrap();
+    }
+    let ctx = sb.ctx();
+    let mut app = App::new(&ctx).unwrap();
+    app.on_key(&ctx, ctrl('r'));
+    let text = screen(&render(&mut app, 80, 24));
+    assert!(text.contains("Move to Trash") && text.contains("Move to the trash:"));
+    assert!(text.contains("alpha") && text.contains("Enter OK") && text.contains("Esc Cancel"));
+    app.on_key(&ctx, key(KeyCode::Esc));
+
+    for _ in 0..25 {
+        app.on_key(&ctx, key(KeyCode::Tab));
+    }
+    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('z'));
+    let text = screen(&render(&mut app, 80, 24));
+    assert!(text.contains("Undo Archive") && text.contains("Back to Active:"));
+    assert!(text.contains("and 8 more"), "{text}");
+    // The list behind the window has names too; only the indented ones are inside it.
+    assert!(
+        text.contains("│    dir14") && !text.contains("│    dir15"),
+        "{text}"
+    );
+}
+
+#[test]
+fn ctrl_z_undoes_archiving_and_restoring_one_step_at_a_time() {
+    let (sb, ctx, mut app) = setup();
+    fs::create_dir(sb.root.join("zeta")).unwrap();
+    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, key(KeyCode::Tab));
+    app.on_key(&ctx, key(KeyCode::Tab));
+    app.on_key(&ctx, ctrl('a'));
+    assert_eq!(sb.archived(), ["alpha", "beta", "gamma"]);
+    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('a'));
+    assert_eq!(sb.archived(), ["beta", "gamma"]);
+
+    app.on_key(&ctx, ctrl('z'));
+    let confirm = app.confirm.as_ref().unwrap();
+    assert_eq!(confirm.action, Confirmable::UndoRestore);
+    assert_eq!(confirm.targets, sb.entries(&["alpha"]));
+    assert_eq!(sb.archived(), ["beta", "gamma"], "nothing before Enter");
+    app.on_key(&ctx, key(KeyCode::Enter));
+    assert_eq!(sb.archived(), ["alpha", "beta", "gamma"]);
+    assert_eq!(app.status.as_ref().unwrap().text, "undo: archived: alpha");
+
+    app.on_key(&ctx, ctrl('z'));
+    let confirm = app.confirm.as_ref().unwrap();
+    assert_eq!(confirm.action, Confirmable::UndoArchive);
+    assert_eq!(confirm.targets, sb.entries(&["beta", "gamma"]));
+    app.on_key(&ctx, key(KeyCode::Enter));
+    assert_eq!(sb.archived(), ["alpha"]);
+
+    app.on_key(&ctx, ctrl('z'));
+    app.on_key(&ctx, key(KeyCode::Enter));
+    assert!(sb.archived().is_empty());
+    app.on_key(&ctx, ctrl('z'));
+    assert!(app.confirm.is_none());
+    assert_eq!(app.status.as_ref().unwrap().text, "nothing to undo");
+}
+
+#[test]
+fn ctrl_z_never_brings_back_trashed_directories() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('r'));
+    app.on_key(&ctx, key(KeyCode::Enter));
+    app.on_key(&ctx, ctrl('z'));
+    assert!(app.confirm.is_none(), "trashing is not recorded");
+
+    // An archive trashed afterwards cannot be undone; it is dropped, and nothing changes.
+    app.on_key(&ctx, ctrl('a'));
+    assert_eq!(sb.archived(), ["beta"]);
+    app.on_key(&ctx, ctrl('t'));
+    app.on_key(&ctx, ctrl('r'));
+    app.on_key(&ctx, key(KeyCode::Enter));
+    app.on_key(&ctx, ctrl('z'));
+    app.on_key(&ctx, key(KeyCode::Enter));
+    let status = app.status.as_ref().unwrap();
+    assert!(status.is_error, "{}", status.text);
+    assert_eq!(sb.names(&sb.trash_dir), ["0-alpha", "1-beta"]);
+    assert!(sb.archived().is_empty());
+    app.on_key(&ctx, ctrl('z'));
+    assert_eq!(app.status.as_ref().unwrap().text, "nothing to undo");
+}
+
+#[test]
+fn cancelling_an_undo_keeps_it() {
+    let (sb, ctx, mut app) = setup();
+    app.on_key(&ctx, ctrl('a'));
+    app.on_key(&ctx, ctrl('z'));
+    app.on_key(&ctx, key(KeyCode::Esc));
+    assert_eq!(sb.archived(), ["alpha"]);
+    app.on_key(&ctx, ctrl('z'));
+    app.on_key(&ctx, key(KeyCode::Enter));
+    assert!(sb.archived().is_empty());
 }

@@ -26,7 +26,9 @@ use std::sync::Arc;
 use crate::context::Context;
 use crate::guard;
 
-pub use app::{App, ListKind, NewForm, Outcome, Panes, SearchResults, Status};
+pub use app::{
+    App, Confirm, Confirmable, ListKind, NewForm, Outcome, Panes, SearchResults, Status,
+};
 pub use preview::{PreviewMode, Shown};
 
 /// Draws on stderr: stdout is reserved for the selected path, which the shell wrapper captures.

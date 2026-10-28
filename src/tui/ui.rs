@@ -10,7 +10,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
 
-use super::app::{App, ListKind, Panes};
+use super::app::{App, Confirm, Confirmable, ListKind, Panes};
 use super::preview::{self, PreviewMode, Shown};
 use super::text;
 use crate::create::{Job, Plan, RECIPES, Recipe};
@@ -65,6 +65,8 @@ pub fn draw(frame: &mut Frame, app: &mut App, cache: &mut PreviewCache) {
     draw_status(frame, app, status);
     if app.help {
         draw_help(frame, app);
+    } else if let Some(confirm) = &app.confirm {
+        draw_confirm(frame, confirm);
     }
 }
 
@@ -162,6 +164,7 @@ fn help_items(app: &App) -> Vec<(&'static str, &'static str)> {
         ("Ctrl+T", "Toggle List: Active/Archived"),
         ("Ctrl+A", toggle_label(app.kind)),
         ("Ctrl+R", "Move to Trash"),
+        ("Ctrl+Z", "Undo Archive/Restore"),
         ("Ctrl+O", OPEN_LABEL),
         ("Ctrl+P", "Toggle Preview: README/Tree"),
         ("Ctrl+N", "New Directory or Clone"),
@@ -185,16 +188,74 @@ fn draw_help(frame: &mut Frame, app: &App) {
             ])
         })
         .collect();
-    let content_width = lines.iter().map(Line::width).max().unwrap_or(0);
+    draw_window(
+        frame,
+        Span::styled(" Help ", bold()),
+        lines,
+        Line::from(vec![
+            Span::styled(" ? / Esc", bold()),
+            Span::styled(" Close ", dim()),
+        ]),
+    );
+}
 
+/// What Enter would do, and to which directories. Long lists are cut to fit the screen.
+fn draw_confirm(frame: &mut Frame, confirm: &Confirm) {
+    let (title, prompt) = match confirm.action {
+        Confirmable::Trash => (" Move to Trash ", "Move to the trash:"),
+        Confirmable::UndoArchive => (" Undo Archive ", "Back to Active:"),
+        Confirmable::UndoRestore => (" Undo Restore ", "Back to Archived:"),
+    };
+    let title_style = match confirm.action {
+        Confirmable::Trash => bold().fg(DANGER_COLOR),
+        _ => bold(),
+    };
+    // Borders and padding (4), the prompt and the blank row under it (2).
+    let room = (frame.area().height as usize).saturating_sub(6).max(1);
+    let names: Vec<&str> = confirm.targets.iter().map(|e| e.name.as_str()).collect();
+    let shown = if names.len() > room {
+        room - 1
+    } else {
+        names.len()
+    };
+    let mut lines = vec![Line::raw(prompt), Line::default()];
+    lines.extend(
+        names[..shown]
+            .iter()
+            .map(|n| Line::styled(format!("  {}", text::sanitize(n)), bold())),
+    );
+    if shown < names.len() {
+        lines.push(Line::styled(
+            format!("  and {} more", names.len() - shown),
+            dim(),
+        ));
+    }
+    draw_window(
+        frame,
+        Span::styled(title, title_style),
+        lines,
+        Line::from(vec![
+            Span::styled(" Enter", bold()),
+            Span::styled(" OK  ", dim()),
+            Span::styled("Esc", bold()),
+            Span::styled(" Cancel ", dim()),
+        ]),
+    );
+}
+
+/// A bordered window centered on top of the screen.
+fn draw_window(frame: &mut Frame, title: Span, lines: Vec<Line>, bottom: Line) {
+    let content_width = lines
+        .iter()
+        .map(Line::width)
+        .chain([title.width(), bottom.width()])
+        .max()
+        .unwrap_or(0);
     let block = Block::bordered()
         .border_style(dim())
         .padding(Padding::new(2, 2, 1, 1))
-        .title(Span::styled(" Help ", bold()))
-        .title_bottom(Line::from(vec![
-            Span::styled(" ? / Esc", bold()),
-            Span::styled(" Close ", dim()),
-        ]));
+        .title(title)
+        .title_bottom(bottom);
     let screen = frame.area();
     // Borders (2) and padding (2 + 2 across, 1 + 1 down) around the text.
     let width = ((content_width + 6) as u16).min(screen.width);

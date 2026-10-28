@@ -37,6 +37,25 @@ enum Op {
     ToggleArchived,
 }
 
+/// What the confirmation dialog runs on Enter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Confirmable {
+    Trash,
+    UndoArchive,
+    UndoRestore,
+}
+
+pub struct Confirm {
+    pub action: Confirmable,
+    pub targets: Vec<Entry>,
+}
+
+/// One Ctrl+A, kept for Ctrl+Z until the TUI closes. Trashing, creating and cloning are not kept.
+struct Change {
+    archived: bool,
+    targets: Vec<Entry>,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
     Continue,
@@ -117,6 +136,9 @@ pub struct App {
     pub panes: Panes,
     /// The shortcut list is open on top of everything; keys go to it instead of the query.
     pub help: bool,
+    /// Like the help, it covers the screen and takes every key until it is answered.
+    pub confirm: Option<Confirm>,
+    history: Vec<Change>,
     pub new: NewForm,
     /// Paths on screen are shortened to `~/...` with this.
     pub home: PathBuf,
@@ -144,6 +166,8 @@ impl App {
             view: Vec::new(),
             panes: Panes::default(),
             help: false,
+            confirm: None,
+            history: Vec::new(),
             new: NewForm::default(),
             home: ctx.env.home.clone(),
             job: None,
@@ -206,8 +230,8 @@ impl App {
     /// Returns whether the screen needs a redraw: terminals also report plain mouse motion, which
     /// must not cost a redraw each time.
     pub fn on_mouse(&mut self, event: MouseEvent) -> bool {
-        // The list under the help window or the New view is hidden; never click or scroll it blindly.
-        if self.help || self.new.open {
+        // The list under the help window, a dialog or the New view is hidden; never click or scroll it blindly.
+        if self.help || self.confirm.is_some() || self.new.open {
             return false;
         }
         let at = Position::new(event.column, event.row);
@@ -247,7 +271,10 @@ impl App {
     }
 
     pub fn on_paste(&mut self, ctx: &Context, text: &str) {
-        if self.help || (self.new.open && (self.new.search.is_some() || self.is_busy())) {
+        if self.help
+            || self.confirm.is_some()
+            || (self.new.open && (self.new.search.is_some() || self.is_busy()))
+        {
             return;
         }
         // Pasted text is data, never commands: control characters are dropped.
@@ -273,6 +300,18 @@ impl App {
             }
             return Outcome::Continue;
         }
+        if self.confirm.is_some() {
+            match (key.code, ctrl) {
+                (KeyCode::Char('c'), true) => return Outcome::Quit,
+                (KeyCode::Enter, _) => self.run_confirmed(ctx),
+                (KeyCode::Esc, _) => {
+                    self.confirm = None;
+                    self.info("cancelled");
+                }
+                _ => {}
+            }
+            return Outcome::Continue;
+        }
         if self.new.open {
             return self.on_new_key(ctx, key, ctrl);
         }
@@ -290,6 +329,7 @@ impl App {
             (KeyCode::Char('r'), true) => self.execute(ctx, Op::Trash),
             (KeyCode::Char('o'), true) => self.open_current(ctx),
             (KeyCode::Char('q'), true) => self.clear_marks(),
+            (KeyCode::Char('z'), true) => self.ask_undo(),
             (KeyCode::Char('n'), true) => {
                 self.new.open = true;
                 self.status = None;
@@ -576,12 +616,68 @@ impl App {
             return self.fail(e);
         }
 
-        let result = self.run_op(ctx, op, &targets);
-        match result {
-            Ok(message) => {
-                if op == Op::Trash && ctx.config.sound {
+        match op {
+            Op::Trash => {
+                self.confirm = Some(Confirm {
+                    action: Confirmable::Trash,
+                    targets,
+                })
+            }
+            Op::ToggleArchived => {
+                let archive = self.kind == ListKind::Active;
+                let result = set_archived(ctx, archive, &targets);
+                if result.is_ok() {
+                    self.history.push(Change {
+                        archived: archive,
+                        targets,
+                    });
+                }
+                self.after_change(ctx, result);
+            }
+        }
+    }
+
+    fn ask_undo(&mut self) {
+        let Some(last) = self.history.last() else {
+            return self.info("nothing to undo");
+        };
+        self.confirm = Some(Confirm {
+            action: if last.archived {
+                Confirmable::UndoArchive
+            } else {
+                Confirmable::UndoRestore
+            },
+            targets: last.targets.clone(),
+        });
+    }
+
+    fn run_confirmed(&mut self, ctx: &Context) {
+        let Some(confirm) = self.confirm.take() else {
+            return;
+        };
+        let result = match confirm.action {
+            Confirmable::Trash => {
+                let result = ops::remove(ctx, &confirm.targets)
+                    .map(|names| format!("moved to trash: {}", names.join(", ")));
+                if result.is_ok() && ctx.config.sound {
                     play_trash_sound();
                 }
+                result
+            }
+            // Dropped even when it fails: whatever made it fail (the directory was trashed or
+            // restored meanwhile) would keep it failing, and block everything older.
+            Confirmable::UndoArchive | Confirmable::UndoRestore => match self.history.pop() {
+                Some(change) => set_archived(ctx, !change.archived, &change.targets)
+                    .map(|message| format!("undo: {message}")),
+                None => return,
+            },
+        };
+        self.after_change(ctx, result);
+    }
+
+    fn after_change(&mut self, ctx: &Context, result: anyhow::Result<String>) {
+        match result {
+            Ok(message) => {
                 self.marks.clear();
                 self.reload(ctx);
                 self.info(message);
@@ -599,32 +695,6 @@ impl App {
             Ok(()) => self.info(format!("opened: {name}")),
             Err(e) => self.fail(e),
         }
-    }
-
-    fn run_op(&self, ctx: &Context, op: Op, targets: &[Entry]) -> anyhow::Result<String> {
-        let names = |v: Vec<String>| v.join(", ");
-        Ok(match (self.kind, op) {
-            (ListKind::Active, Op::ToggleArchived) => {
-                let archived = ops::archive(ctx, targets)?;
-                let notes: Vec<String> = archived
-                    .iter()
-                    .filter(|m| !m.leftovers.is_empty())
-                    .map(|m| format!("{} contains {}", m.name, m.leftovers.join(", ")))
-                    .collect();
-                let mut msg = format!(
-                    "archived: {}",
-                    names(archived.iter().map(|m| m.name.clone()).collect())
-                );
-                if !notes.is_empty() {
-                    msg.push_str(&format!(" ({})", notes.join("; ")));
-                }
-                msg
-            }
-            (ListKind::Archived, Op::ToggleArchived) => {
-                format!("restored: {}", names(ops::restore(ctx, targets)?))
-            }
-            (_, Op::Trash) => format!("moved to trash: {}", names(ops::remove(ctx, targets)?)),
-        })
     }
 
     /// Re-reads the lists after a change on disk.
@@ -694,6 +764,28 @@ impl App {
         }
         self.cursor = self.cursor.min(self.view.len().saturating_sub(1));
     }
+}
+
+/// Archives (`archive`) or restores the targets, and describes it for the status line.
+fn set_archived(ctx: &Context, archive: bool, targets: &[Entry]) -> anyhow::Result<String> {
+    if !archive {
+        return Ok(format!(
+            "restored: {}",
+            ops::restore(ctx, targets)?.join(", ")
+        ));
+    }
+    let archived = ops::archive(ctx, targets)?;
+    let names: Vec<&str> = archived.iter().map(|a| a.name.as_str()).collect();
+    let mut message = format!("archived: {}", names.join(", "));
+    let notes: Vec<String> = archived
+        .iter()
+        .filter(|a| !a.leftovers.is_empty())
+        .map(|a| format!("{} contains {}", a.name, a.leftovers.join(", ")))
+        .collect();
+    if !notes.is_empty() {
+        message.push_str(&format!(" ({})", notes.join("; ")));
+    }
+    Ok(message)
 }
 
 fn sort_by_score(entries: &mut [Entry], scores: &HashMap<PathBuf, f64>) {
