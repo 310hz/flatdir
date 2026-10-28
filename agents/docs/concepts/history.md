@@ -35,7 +35,7 @@
 | 外部コマンド | fzf、trash、rich、eza | 必須は無し(`trash` crate、自前 TUI、自前 Markdown 描画)。`zoxide`・`git`・`gh`・`curl`・`git-lfs` は任意機能 |
 | 並び順 | zoxide のスコア降順 | 同じ(起動を待たせないよう非同期で適用) |
 | 表示名 | root 1 つなら root 相対 | 同じ |
-| アーカイブ時の掃除 | `node_modules` 等を 1 件ずつ確認して削除 | **廃止**。残っているものを報告するだけで、自動削除はしない |
+| アーカイブ時の掃除 | `node_modules` 等を 1 件ずつ確認して削除 | **廃止**。削除も報告もしない(ユーザーの判断) |
 | `cd` | `modules/flatdir.sh` の関数 | `flatdir shell` が出す関数([tui.md](tui.md) の「Enter で cd する仕組み」)。`root --cd` でも `cd` する |
 
 ## 4. 判断の記録(却下した案を含む)

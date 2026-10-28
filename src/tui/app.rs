@@ -774,18 +774,10 @@ fn set_archived(ctx: &Context, archive: bool, targets: &[Entry]) -> anyhow::Resu
             ops::restore(ctx, targets)?.join(", ")
         ));
     }
-    let archived = ops::archive(ctx, targets)?;
-    let names: Vec<&str> = archived.iter().map(|a| a.name.as_str()).collect();
-    let mut message = format!("archived: {}", names.join(", "));
-    let notes: Vec<String> = archived
-        .iter()
-        .filter(|a| !a.leftovers.is_empty())
-        .map(|a| format!("{} contains {}", a.name, a.leftovers.join(", ")))
-        .collect();
-    if !notes.is_empty() {
-        message.push_str(&format!(" ({})", notes.join("; ")));
-    }
-    Ok(message)
+    Ok(format!(
+        "archived: {}",
+        ops::archive(ctx, targets)?.join(", ")
+    ))
 }
 
 fn sort_by_score(entries: &mut [Entry], scores: &HashMap<PathBuf, f64>) {

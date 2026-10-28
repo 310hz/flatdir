@@ -33,19 +33,18 @@ fn archive_only_records_targets_and_leaves_them_in_place() {
     fs::write(sb.root.join("alpha/keep.txt"), "x").unwrap();
     fs::create_dir_all(sb.root.join("alpha/node_modules")).unwrap();
 
-    let archived = ops::archive(&sb.ctx(), &sb.entries(&["alpha"])).unwrap();
+    assert_eq!(
+        ops::archive(&sb.ctx(), &sb.entries(&["alpha"])).unwrap(),
+        ["alpha"]
+    );
 
     assert_eq!(sb.names(&sb.root), ROOT_ALL, "nothing moves");
     assert_eq!(
         sb.names(&sb.root.join("alpha")),
-        ["keep.txt", "node_modules"]
+        ["keep.txt", "node_modules"],
+        "nothing inside is cleaned up"
     );
     assert_eq!(sb.archived(), ["alpha"]);
-    assert_eq!(
-        archived[0].leftovers,
-        ["node_modules"],
-        "reported, but never deleted"
-    );
 }
 
 #[test]

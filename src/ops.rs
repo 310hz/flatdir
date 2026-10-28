@@ -10,16 +10,6 @@ use crate::candidates::Entry;
 use crate::context::Context;
 use crate::guard::{ensure_child_of, ensure_plain_dir};
 
-/// Regenerable items worth mentioning after archiving. They are reported, never deleted automatically.
-const LEFTOVER_CANDIDATES: &[&str] =
-    &[".venv", "node_modules", "__pycache__", ".ipynb_checkpoints"];
-
-pub struct Archived {
-    pub name: String,
-    /// Names from `LEFTOVER_CANDIDATES` found inside.
-    pub leftovers: Vec<&'static str>,
-}
-
 /// Checks every target before anything changes, and returns the state as it is on disk now.
 fn validate(ctx: &Context, targets: &[Entry], archived: bool) -> Result<State> {
     let root = ctx.root()?;
@@ -36,23 +26,13 @@ fn validate(ctx: &Context, targets: &[Entry], archived: bool) -> Result<State> {
     Ok(state)
 }
 
-pub fn archive(ctx: &Context, targets: &[Entry]) -> Result<Vec<Archived>> {
+pub fn archive(ctx: &Context, targets: &[Entry]) -> Result<Vec<String>> {
     let mut state = validate(ctx, targets, false)?;
     for t in targets {
         state.archived.insert(t.path.clone(), Record::now());
     }
     state.save(&ctx.env.state_path)?;
-    Ok(targets
-        .iter()
-        .map(|t| Archived {
-            name: t.name.clone(),
-            leftovers: LEFTOVER_CANDIDATES
-                .iter()
-                .copied()
-                .filter(|n| t.path.join(n).symlink_metadata().is_ok())
-                .collect(),
-        })
-        .collect())
+    Ok(targets.iter().map(|t| t.name.clone()).collect())
 }
 
 pub fn restore(ctx: &Context, targets: &[Entry]) -> Result<Vec<String>> {

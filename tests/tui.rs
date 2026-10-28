@@ -186,21 +186,6 @@ fn ctrl_a_archives_all_marked_entries() {
 }
 
 #[test]
-fn ctrl_a_reports_leftovers_instead_of_deleting_them() {
-    let (sb, ctx, mut app) = setup();
-    fs::create_dir_all(sb.root.join("alpha/node_modules")).unwrap();
-    app.on_key(&ctx, ctrl('a'));
-    assert!(sb.root.join("alpha/node_modules").is_dir());
-    assert!(
-        app.status
-            .as_ref()
-            .unwrap()
-            .text
-            .contains("alpha contains node_modules")
-    );
-}
-
-#[test]
 fn marking_every_entry_is_refused_by_both_keys_and_nothing_moves() {
     let (sb, ctx, mut app) = setup();
     for _ in 0..3 {
